@@ -25,7 +25,6 @@
 #include "create-interface.h"
 #include "jigdump.h"
 /* Set of signals that get blocked while processing a packet. */
-dfs
 
 int main(int argc, char* argv[])
 {
@@ -37,7 +36,7 @@ int main(int argc, char* argv[])
   int jb_len = sizeof(jb);
   int in_fd= checkup(device0);
   int in_fd2=checkup(device1);
-  printf("inside main")
+  printf("inside main");
   for(;;){
     int r = recvfrom(in_fd, jb, jb_sz, MSG_TRUNC, NULL, NULL);
     if (r > jb_sz) {
