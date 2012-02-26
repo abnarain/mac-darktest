@@ -25,21 +25,20 @@
 #include "create-interface.h"
 #include "jigdump.h"
 /* Set of signals that get blocked while processing a packet. */
-
+dfs
 
 int main(int argc, char* argv[])
 {
   char  *device0= argv[1];
   char  *device1= argv[2];
   typedef unsigned char uchar;
-  uchar jb[1400];
+  uchar jb[1600];
   const int jb_sz =  sizeof(jb);
   int jb_len = sizeof(jb);
   int in_fd= checkup(device0);
   int in_fd2=checkup(device1);
-  printf("inside main");
+  printf("inside main")
   for(;;){
-    printf("recvfrom \n");
     int r = recvfrom(in_fd, jb, jb_sz, MSG_TRUNC, NULL, NULL);
     if (r > jb_sz) {
       printf( "recvfrom: block is truncated (%d bytes), skip\n", r);
@@ -57,14 +56,11 @@ int main(int argc, char* argv[])
       printf("EAGAIN\n");
       //      return 1;
     }
-    printf(" i m here \n");
     uchar* b=NULL;
     for(b = jb; b < jb+jb_len; ) {
       
       struct jigdump_hdr *jh = (struct jigdum_hdr *)b ;
-      printf("in main \n");
-      printf("version %d\n ",jh-> version_);
-      if(jh-> version_ ==99){
+      if(jh-> version_ == JIGDUMP_HDR_VERSION ){
 	printf("version %d\n ",jh-> version_);
 	printf("hdr_len %d \n ",jh-> hdrlen_);
 	printf("status %d \n",jh-> status_);
@@ -72,20 +68,20 @@ int main(int argc, char* argv[])
 	printf("rssi %d\n ",jh-> rssi_);
 	printf("flags %d\n ",jh-> flags_);
 	printf("channel %d\n ",jh-> channel_);
-	printf("rate %d\n ",jh-> rate_);
-	
+	printf("rate %d\n ",jh-> rate_);	
 	printf("caplen %d \n",jh-> caplen_);
 	printf("snaplen %d\n ",jh-> snaplen_);	
 	printf("rx delay %d\n ",jh-> rxdelay_); 
 	printf("prev errs %d\n",jh-> prev_errs_);  
 	printf("mac tsf%d\n",jh-> mac_tsf_);
-	
 	printf("mac time %d\n",jh-> mac_time_);
 	printf("fcs=%d\n",jh-> fcs_);
       }else{
+	printf("Error : version not correct !  \n");      
 	printf("version %d\n ",jh-> version_);
 	printf("phy-err %d \n",jh-> phyerr_);
-	printf("packet is not having the required radiotap headers \n");      
+	printf("rssi %d \n",jh-> rssi_);
+
       }
       
       
