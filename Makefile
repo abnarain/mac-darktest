@@ -7,7 +7,7 @@
 
 include $(TOPDIR)/rules.mk
 
-PKG_NAME:=sniffer
+PKG_NAME:=mac-darktest
 PKG_VERSION:=1.0
 PKG_RELEASE:=1
 
@@ -17,7 +17,7 @@ PKG_RELEASE:=1
 include $(INCLUDE_DIR)/package.mk
 
 # DEPENDS:=+libpthread
-define Package/sniffer
+define Package/mac-darktest
 	SECTION:=net
 	CATEGORY:=Network
 	TITLE:=sniffes packets on wireless interface
@@ -30,9 +30,9 @@ define Build/Prepare
 	$(CP) ./src/* $(PKG_BUILD_DIR)
 endef
 
-define Package/sniffer/install
+define Package/mac-darktest/install
 	$(INSTALL_DIR) $(1)/usr/bin
-	$(INSTALL_BIN) $(PKG_BUILD_DIR)/sniffer $(1)/usr/bin/sniffer
+	$(INSTALL_BIN) $(PKG_BUILD_DIR)/mac-darktest $(1)/usr/bin/mac-darktest
 endef
 
-$(eval $(call BuildPackage,sniffer))
+$(eval $(call BuildPackage,mac-darktest))
