@@ -34,14 +34,15 @@ int main(int argc, char* argv[])
   uchar jb[1600];
   const int jb_sz =  sizeof(jb);
   int jb_len = sizeof(jb);
-  int in_fd= checkup(device0);
-  int in_fd2=checkup(device1);
+  int in_fd_0= checkup(device0);
+  int in_fd_1=checkup(device1);
   printf("inside main");
   for(;;){
-    int r = recvfrom(in_fd, jb, jb_sz, MSG_TRUNC, NULL, NULL);
+	memset(&jb,'0',sizeof(jb));
+    int r = recvfrom(in_fd_0, jb, jb_sz, MSG_TRUNC, NULL, NULL);
     if (r > jb_sz) {
       printf( "recvfrom: block is truncated (%d bytes), skip\n", r);
-      //      continue;
+     	      continue;
     }
     if (r > 0) {
       jb_len= r;
@@ -49,7 +50,7 @@ int main(int argc, char* argv[])
     }
     if (0 == r) {
       printf("recvfrom returns 0 (%s), interface is down: bail\n", strerror(errno));
-      //      return 1;      
+      return 1;      
     }
     if (EAGAIN == errno) {
       printf("EAGAIN\n");
@@ -75,6 +76,7 @@ int main(int argc, char* argv[])
 	printf("mac tsf%d\n",jh-> mac_tsf_);
 	printf("mac time %d\n",jh-> mac_time_);
 	printf("fcs=%d\n",jh-> fcs_);
+
       }else{
 	printf("Error : version not correct !  \n");      
 	printf("version %d\n ",jh-> version_);
@@ -84,6 +86,7 @@ int main(int argc, char* argv[])
       }
       
       
+	 b += sizeof(*jh) + jh->snaplen_;
 
       
     }
