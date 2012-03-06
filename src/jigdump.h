@@ -36,11 +36,7 @@ struct jigdump_hdr
 	u_int16_t caplen_;
 	u_int16_t snaplen_;
 
-	u_int16_t rxdelay_; // delay between hal to ath_rx_capture()
 	u_int16_t prev_errs_;
-
-	//tsf when first bit arrives mac (note corresponds to last bit in phy)
-	u_int64_t mac_tsf_; 
 
 	u_int64_t mac_time_; //epoch time when first bit arrives mac
 
