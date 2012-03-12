@@ -33,6 +33,7 @@
 
 
 
+
 #ifndef roundup2
 #define roundup2(x, y)  (((x)+((y)-1))&(~((y)-1))) /* if y is powers of two */
 #endif
@@ -144,10 +145,6 @@ struct mgmt_body_t {
 };
 
 
-#define T_MGMT 0x0  /* management */
-#define T_CTRL 0x1  /* control */
-#define T_DATA 0x2 /* data */
-
 #define IEEE802_11_FC_LEN               2
 #define IEEE802_11_DUR_LEN              2
 #define IEEE802_11_DA_LEN               6
@@ -164,13 +161,9 @@ struct mgmt_body_t {
 #define IEEE802_11_FCS_LEN              4
 
 /* Lengths of beacon components. */
-
-#define ST_BEACON               0x8
-
 #define MGMT_HDRLEN     (IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+\
                          IEEE802_11_DA_LEN+IEEE802_11_SA_LEN+\
                          IEEE802_11_BSSID_LEN+IEEE802_11_SEQ_LEN)
-
 
 
 #define TTEST2(var, l) (snapend - (l) <= snapend && \
@@ -183,8 +176,6 @@ struct mgmt_body_t {
 #define CAPABILITY_CFP_REQ(cap) ((cap) & 0x0008)
 #define CAPABILITY_PRIVACY(cap) ((cap) & 0x0010)
 
-#define CTRL_PS_POLL    0xA
-
 #define FC_TO_DS(fc)            ((fc) & 0x0100)
 #define FC_FROM_DS(fc)          ((fc) & 0x0200)
 #define FC_MORE_FLAG(fc)        ((fc) & 0x0400)
@@ -195,6 +186,34 @@ struct mgmt_body_t {
 #define FC_ORDER(fc)            ((fc) & 0x8000)
 #define FC_TYPE(fc)             (((fc) >> 2) & 0x3)
 #define FC_SUBTYPE(fc)          (((fc) >> 4) & 0xF)
+
+struct ctrl_rts_t {
+  u_int16_t       fc;
+  u_int16_t       duration;
+  u_int8_t        ra[6];
+  u_int8_t        ta[6];
+  u_int8_t        fcs[4];
+};
+
+#define CTRL_RTS_HDRLEN (IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+\
+                         IEEE802_11_RA_LEN+IEEE802_11_TA_LEN)
+
+struct ctrl_cts_t {
+  u_int16_t       fc;
+  u_int16_t       duration;
+  u_int8_t        ra[6];
+  u_int8_t        fcs[4];
+};
+
+#define CTRL_CTS_HDRLEN (IEEE802_11_FC_LEN+IEEE802_11_DUR_LEN+IEEE802_11_RA_LEN)
+
+struct ctrl_ack_t {
+  u_int16_t       fc;
+  u_int16_t       duration;
+  u_int8_t        ra[6];
+  u_int8_t        fcs[4];
+};
+
 
 
 
