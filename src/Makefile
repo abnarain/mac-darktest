@@ -1,9 +1,9 @@
 CC=gcc
 
 CFLAGS+=-c -Wall -O3 -fno-strict-aliasing -DOSX
-LDFLAGS+= #-lpcap  
+#LDFLAGS+=   
 
-SOURCES=mac-darktest.c  create-interface.c util.c
+SOURCES=mac-darktest.c  create-interface.c util.c mgmt.c
 OBJECTS=$(SOURCES:.c=.o)
 EXECUTABLE=mac-darktest
 
