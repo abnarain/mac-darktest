@@ -211,7 +211,7 @@ int parse_elements(struct mgmt_body_t *pbody, const uchar *p, int offset,u_int l
       break;
     default:
       if (*(p + offset)== HT_CAP){
-        if(paket->bad_fcs_err == 0 )
+        if(paket->ath_crc_err == 0 )
 	  if(paket->pkt_type == MGT_FRAME && paket->p.mgmt_pkt.pkt_subtype== ST_BEACON){
 	    paket->p.mgmt_pkt.n_enabled=1;
 	    printf("its HT ! \n");
@@ -269,11 +269,11 @@ int handle_beacon(const uchar *p, u_int length, struct rcv_pkt * paket)
   u_int8_t _r;
   if (pbody.rates_present) {
     _r= pbody.rates.rate[pbody.rates.length -1] ;
-    paket->rate_max=(float)((.5 * ((_r) & 0x7f)));
-    printf("packet rate is %d \n", paket->rate_max);
+    paket->p.mgmt_pkt.rate_max=(float)((.5 * ((_r) & 0x7f)));
+    printf("packet rate is %d \n", paket->p.mgmt_pkt.rate_max);
   }
   else {
-    paket->rate_max=0.0; // undefined rate, because of bad fcs (might be a reason)
+    paket->p.mgmt_pkt.rate_max=0.0; // undefined rate, because of bad fcs (might be a reason)
   }
   paket->p.mgmt_pkt.cap_ess_ibss =55;
   paket->p.mgmt_pkt.cap_ess_ibss=  CAPABILITY_ESS(pbody.capability_info) ? 1:2;

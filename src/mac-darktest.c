@@ -14,7 +14,7 @@
 #include <math.h>
 #include <ctype.h>
 #include <inttypes.h>
-
+#include <syslog.h>
 #include "ieee80211.h"
 #include "create-interface.h"
 #include "jigdump.h"
@@ -24,7 +24,7 @@
 
 u_int32_t pkt_count[2];
 int j_hdr(struct jigdump_hdr *jh , int in_idx, struct rcv_pkt * paket){  
-  if(jh->flags_ & RX_FLAG_HT)
+  if(jh->flags_ & (RX_FLAG_HT | RX_FLAG_SHORTPRE | RX_FLAG_SHORT_GI  |  RX_FLAG_40MHZ ))	
     printf("is ht \n");
   if (jh->status_ & ATH9K_RXERR_PHY){
     printf("phy err \n");
@@ -173,7 +173,8 @@ int create_header(uchar *jb, const int jb_len, int in_idx){
     //TODO: check for channel here ! when you get better
     b += sizeof(*jh) + jh->snaplen_ ;
     if (b > jb + jb_len) {
-      syslog( LOG_ERR,"data is mis-aligned %d:%d, caplen=%d discard block\n", (int)(b-jb), jb_len, jh->snaplen_);
+      syslog(LOG_ERR,"data is mis-aligned %d:%d, caplen=%d discard block\n", (int)(b-jb), jb_len, jh->snaplen_);
+
       return 0;
     }
     struct rcv_pkt paket ;
