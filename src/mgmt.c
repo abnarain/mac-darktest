@@ -10,7 +10,6 @@
 #include <ctype.h>
 #include "td-util.h"
 #include "pkts.h"
-#include "stats.h"
 #include "llc.h"
 #include "ieee80211.h"
 int fn_print(register const uchar *s, register const uchar *ep, struct rcv_pkt * paket)
