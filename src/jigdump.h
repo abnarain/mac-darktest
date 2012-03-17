@@ -31,11 +31,13 @@ struct jigdump_hdr
 	u_int8_t rssi_;
 	u_int8_t flags_;
 	u_int8_t channel_;
-	u_int8_t rate_;
+	u_int16_t rate_;
+	u_int32_t rate_idx_ ; 
 
 	u_int16_t caplen_;
 	u_int16_t snaplen_;
 
+	u_int8_t antenna_;
 	u_int16_t prev_errs_;
 
 	u_int64_t mac_time_; //epoch time when first bit arrives mac
@@ -43,45 +45,6 @@ struct jigdump_hdr
 	u_int32_t fcs_;
 	// these are only valid in tx frame
 } __attribute__ ((packed));
-
-#if 0
-struct jigphy_hdr
-{
-	u_int64_t version_:8;
-	u_int64_t phyerr_:6;
-	u_int64_t mac_tsf_:50;
-	// these are only valid in tx frame
-} __attribute__ ((packed));
-#endif
-#if 0
-struct jigdump_hdr2
-{
-	u_int8_t version_:4;
-	u_int8_t status_:2;
-	u_int8_t phyerr_:5;
-	u_int8_t channel_:4;
-
-	u_int8_t hdrlen_;
-	u_int8_t rssi_;
-	u_int8_t flags_;
-	u_int8_t rate_;
-
-	u_int16_t caplen_:12;
-	u_int16_t snaplen_:10;
-
-	//u_int16_t rxdelay_; // delay between hal to ath_rx_capture()
-	//u_int16_t prev_errs_;
-
-	u_int64_t mac_tsf_:50; //tsf when first bit arrives mac
-
-	u_int64_t mac_time_:50; //epoch time when first bit arrives mac
-
-	u_int32_t fcs_;
-	// these are only valid in tx frame
-} __attribute__ ((packed));
-
-jigdump_hdr2 xyz;
-#endif
 
 #define JIGBLOCK_MAX_SIZE (16000)
 struct jigblk_hdr

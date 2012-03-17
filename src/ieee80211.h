@@ -23,6 +23,14 @@ typedef u_int8_t u8;
 typedef u_int16_t u16;
 typedef u_int16_t __le16;
 typedef u_int64_t __le64;
+
+#define ATH9K_RXERR_CRC           0x01
+#define ATH9K_RXERR_PHY           0x02
+#define ATH9K_RXERR_FIFO          0x04
+#define ATH9K_RXERR_DECRYPT       0x08
+#define ATH9K_RXERR_MIC           0x10
+
+
 #define le16_to_cpu(_x) (_x)
 
 #define FCS_LEN 4
@@ -102,6 +110,24 @@ typedef u_int64_t __le64;
    WEP IV and ICV. (this interpretation suggested by Ramiro Barreiro) */
 
 #define IEEE80211_MAX_SSID_LEN		32
+
+enum mac80211_rx_flags {
+  RX_FLAG_MMIC_ERROR      = 1<<0,
+  RX_FLAG_DECRYPTED       = 1<<1,
+  RX_FLAG_MMIC_STRIPPED   = 1<<3,
+  RX_FLAG_IV_STRIPPED     = 1<<4,
+  RX_FLAG_FAILED_FCS_CRC  = 1<<5,
+  RX_FLAG_FAILED_PLCP_CRC = 1<<6,
+  RX_FLAG_MACTIME_MPDU    = 1<<7,
+  RX_FLAG_SHORTPRE        = 1<<8,
+  RX_FLAG_HT              = 1<<9,
+  RX_FLAG_40MHZ           = 1<<10,
+  RX_FLAG_SHORT_GI        = 1<<11,
+};
+
+
+
+
 
 struct ieee80211_hdr {
 	__le16 frame_control;
