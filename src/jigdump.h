@@ -25,10 +25,9 @@ struct jigdump_hdr
 {
 	u_int8_t version_;
 	u_int8_t hdrlen_;
-//	u_int16_t status_;
 	u_int32_t phyerr_;
 
-	u_int8_t rssi_;
+	int8_t rssi_;
 	u_int8_t flags_;
 	u_int8_t channel_;
 	int freq_ ;

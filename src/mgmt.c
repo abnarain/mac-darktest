@@ -8,10 +8,11 @@
 #include <linux/if_packet.h>
 #include <netinet/ip.h>
 #include <ctype.h>
+#include <stdlib.h>
 #include "td-util.h"
 #include "pkts.h"
-#include "llc.h"
 #include "ieee80211.h"
+
 int fn_print(register const uchar *s, register const uchar *ep, struct rcv_pkt * paket)
 {
   register int ret;
@@ -24,29 +25,29 @@ int fn_print(register const uchar *s, register const uchar *ep, struct rcv_pkt *
     if (c == '\0') {
       temp[i]=c ;
       ret = 0;
-      printf("%c",c);
+      //      printf("%c",c);
       break;
     }
     if (!isascii(c)) {
       c = toascii(c);
       temp[i]='-';//c prev
-      printf("-");
+      //      printf("-");
       continue;
     }
     if (!isprint(c)) {
       c ^= 0x40;      /* DEL to ?, others to alpha */
       temp[i]='^';//c prev
-      printf("%c",c);
+      //      printf("%c",c);
       continue;
     }
     temp[i]=c;
-    printf("%c",c);
+    //    printf("%c",c);
     i++;
   }
   if(ret==1)
     temp[i]='\0';
-  printf(" ssid is :!!%s!!\n",temp);
-  //  memcpy(paket->essid,temp, strlen(temp));
+  //  printf(" ssid is :!!%s!!\n",temp);
+  memcpy(paket->p.mgmt_pkt.essid,temp, strlen(temp));
   return ret;
 }
 int parse_elements(struct mgmt_body_t *pbody, const uchar *p, int offset,u_int length, struct rcv_pkt * paket)
@@ -214,7 +215,7 @@ int parse_elements(struct mgmt_body_t *pbody, const uchar *p, int offset,u_int l
         if(paket->ath_crc_err == 0 )
 	  if(paket->pkt_type == MGT_FRAME && paket->p.mgmt_pkt.pkt_subtype== ST_BEACON){
 	    paket->p.mgmt_pkt.n_enabled=1;
-	    printf("its HT ! \n");
+	    //	    printf("its HT ! \n");
 	  }
       }
       if (!TTEST2(*(p + offset), 2))
@@ -260,151 +261,53 @@ int handle_beacon(const uchar *p, u_int length, struct rcv_pkt * paket)
     fn_print(pbody.ssid.ssid, NULL,paket);
   }
   if (pbody.ds_present) {
-    //    paket->channel= ;
-    printf("packet channel = %d\n",pbody.ds.channel);
+    paket->p.mgmt_pkt.channel=pbody.ds.channel;
+//       printf("packet channel = %d\n",pbody.ds.channel);
   }
   paket->p.mgmt_pkt.cap_privacy=  CAPABILITY_PRIVACY(pbody.capability_info) ? 1 :0 ;
-  printf("%s \n",   CAPABILITY_ESS(pbody.capability_info) ? "ESS" : "IBSS");
+  //  printf("%s \n",   CAPABILITY_ESS(pbody.capability_info) ? "ESS" : "IBSS");
 
   u_int8_t _r;
   if (pbody.rates_present) {
     _r= pbody.rates.rate[pbody.rates.length -1] ;
     paket->p.mgmt_pkt.rate_max=(float)((.5 * ((_r) & 0x7f)));
-    printf("packet rate is %d \n", paket->p.mgmt_pkt.rate_max);
+    //    printf("packet rate is %f \n", paket->p.mgmt_pkt.rate_max);
   }
   else {
     paket->p.mgmt_pkt.rate_max=0.0; // undefined rate, because of bad fcs (might be a reason)
   }
-  paket->p.mgmt_pkt.cap_ess_ibss =55;
-  paket->p.mgmt_pkt.cap_ess_ibss=  CAPABILITY_ESS(pbody.capability_info) ? 1:2;
+  paket->p.mgmt_pkt.cap_ess_ibss = paket->p.mgmt_pkt.cap_ess_ibss=  CAPABILITY_ESS(pbody.capability_info) ? 1:2;
   return ret;
 }
-
-
-int handle_probe_request(const uchar *p, u_int length,struct rcv_pkt * paket)
-{
-  struct mgmt_body_t  pbody;
-  int offset = 0;
-  int ret;
-  /*
-  memset(&pbody, 0, sizeof(pbody));
-
-  ret = parse_elements(&pbody, p, offset, length,paket);
-
-  if (pbody.ssid_present) {
-    fn_print(pbody.ssid.ssid, NULL,paket);
-  }else {
-    printf("!ssid \n");
-  }
-  u_int8_t _r;
-  if (pbody.rates_present) {
-    _r= pbody.rates.rate[pbody.rates.length -1] ;
-    //    paket->rate_max=(float)((.5 * ((_r) & 0x7f)));
-    printf("packet rate is %d \n",(float)((.5 * ((_r) & 0x7f))));
-  }
-  else {
-    //    paket->rate_max=0.0; // undefined rate, because of bad fcs (might be a reason)
-  }
-  */
-  return ret;
-}
-
-int
-handle_probe_response(const uchar *p, u_int length,struct rcv_pkt * paket)
-{
-  struct mgmt_body_t  pbody;
-  int offset = 0;
-  int ret;
-
-  memset(&pbody, 0, sizeof(pbody));
-
-  if (!TTEST2(*p, IEEE802_11_TSTAMP_LEN + IEEE802_11_BCNINT_LEN +
-	      IEEE802_11_CAPINFO_LEN))
-    return 0;
-  if (length < IEEE802_11_TSTAMP_LEN + IEEE802_11_BCNINT_LEN +
-      IEEE802_11_CAPINFO_LEN)
-    return 0;
-  memcpy(&pbody.timestamp, p, IEEE802_11_TSTAMP_LEN);
-  offset += IEEE802_11_TSTAMP_LEN;
-  length -= IEEE802_11_TSTAMP_LEN;
-  pbody.beacon_interval = EXTRACT_LE_16BITS(p+offset);
-  offset += IEEE802_11_BCNINT_LEN;
-  length -= IEEE802_11_BCNINT_LEN;
-  pbody.capability_info = EXTRACT_LE_16BITS(p+offset);
-  offset += IEEE802_11_CAPINFO_LEN;
-  length -= IEEE802_11_CAPINFO_LEN;
-
-  ret = parse_elements(&pbody, p, offset, length,paket);
-  /*
-  if (pbody.ssid_present) {
-    fn_print(pbody.ssid.ssid, NULL,paket);
-  }else {
-	printf("!ssid \n");
-}
-  
-  u_int8_t _r;
-  if (pbody.rates_present) {
-    _r= pbody.rates.rate[pbody.rates.length -1] ;
-    paket->rate_max=(float)((.5 * ((_r) & 0x7f)));
-    printf("packet rate is %d \n", paket->rate_max);
-  }
-  else {
-    paket->rate_max=0.0; // undefined rate, because of bad fcs (might be a reason)
-    printf("! rate \n");
-  }
-
-if (pbody.ds_present) {
-    paket->channel= pbody.ds.channel;
-    printf(" channel = %u\n",paket->channel);
-  }else{
-    printf("!ds \n");
- }
-  */
-  return ret;
-}
-
+//static int tcp=0;
 int handle_data( u_int16_t fc, uchar *p,int hdrlen, struct rcv_pkt * paket ){
-  if(DATA_FRAME_IS_NULL(FC_SUBTYPE(fc))){
-    //       printf("no data\n");
-  }
-  if (FC_WEP(fc)) {
-    //printf("ENC \n");
-  }
-  if( FC_SUBTYPE(fc)== IEEE80211_STYPE_DATA || FC_SUBTYPE(fc)== 0x8 ){     
-    int idx =0;
-    p=p+hdrlen +8;
-    //       printf("\nnew\n");
-    //for (idx=0;idx<40 ;idx++)
-    //printf("%02x ",*(p+idx));       
     
-    //struct llc_hdr* llc = (struct llc_hdr*)(p + hdrlen); 	        
-    //   uchar *payload = ((uchar*)f) +hdrlen;
-    //u_int16_t ethertype = (*(payload+6) << 8) | *(payload+7);        
-    //       printf("control is %x\n",control);
+    if(FC_SUBTYPE(fc)== IEEE80211_STYPE_NULLFUNC){
+      paket->p.data_pkt.pkt_subtype= IEEE80211_STYPE_NULLFUNC; 
+    }
+  if( FC_SUBTYPE(fc)== IEEE80211_FTYPE_DATA   ){     
+    p=p+hdrlen +8;
+    paket->p.data_pkt.pkt_subtype= FC_SUBTYPE(fc);
+    
     struct llc_hdr * llc = (struct llc_hdr *) p;
     u_int16_t llc_type =  ntohs(llc->snap.ether_type);
-    //	 printf("dsap=%02x ssap=%02x \n",llc->dsap ,llc->ssap);
-    //	 printf("llc type=%02x\n",llc_type);
-    
     if (llc_type == ETHERTYPE_ARP) {
-      //	   printf("!!!!!!!!!!!! arp!!!!!!!!!!!!!!!! \n");
-      
+	paket->p.data_pkt.eth_type= ETHERTYPE_ARP;
     } else if (llc_type == ETHERTYPE_IP  ) {
-      //        if (jh->caplen_ < hdrlen + sizeof(*llc) + sizeof(struct iphdr))
-      //        return;
+	paket->p.data_pkt.eth_type= ETHERTYPE_IP;
       struct  iphdr* ih = (struct iphdr*)(llc+1);
       if (ih->protocol == IPPROTO_TCP){
-	printf("$$$$ tcp $$$$ \n");
+//	printf("tcp %d \n", tcp++);
+	paket->p.data_pkt.transport_type=IPPROTO_TCP;
       }
       else if (ih->protocol == IPPROTO_UDP){
-	//	     printf("udp \n");
+	paket->p.data_pkt.transport_type=IPPROTO_UDP;
       }
       else if (ih->protocol == IPPROTO_ICMP){
-	//printf("####icmp## \n");
+	paket->p.data_pkt.transport_type=IPPROTO_ICMP;
       }
     }
     
   }
-  printf("\n---\n");
   return 1 ; 
 }

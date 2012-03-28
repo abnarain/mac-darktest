@@ -1,25 +1,26 @@
 #include<errno.h>
 #include<error.h>
-#include <netinet/in.h>    
 #include <sys/ioctl.h>
 #include <stdio.h>
 #include <sys/time.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <linux/if_ether.h>
-#include <net/ethernet.h>
-#include <netinet/ether.h>
-#include <arpa/inet.h>
+#include <math.h>
 #include <netinet/ip.h>
 #include <string.h>
 #include <stdlib.h>
 #include <syslog.h>
-#include <linux/wireless.h>
-#include <math.h>
 #include <linux/if_packet.h>
+#include <linux/if_ether.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <linux/wireless.h>
+#include <linux/if.h>
+#include <net/ethernet.h>
+#include <netinet/ether.h>
+
 
 typedef unsigned char      uchar; 
-
 
 int64_t timeval_to_int64(const struct timeval* tv)
 {
@@ -31,7 +32,7 @@ int config_radio_interface(const char device[])
   int sd = socket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
   struct iwreq    wrq;
   memset(&wrq, 0, sizeof(wrq));
-  strncpy(wrq.ifr_name, device, IFNAMSIZ);
+  strncpy(wrq.ifr_name, device, IFNAMSIZ); // changed ifr_name to ifrn_name 
   wrq.u.mode = IW_MODE_MONITOR;
   if (0 > ioctl(sd, SIOCSIWMODE, &wrq)) {
     perror("ioctl(SIOCSIWMODE) \n");
@@ -159,7 +160,7 @@ int k_pkt_stats(int in_fd)
   if (0 == kstats.tp_drops)
     return 1;
   if(kstats.tp_drops >0) {
-	printf("no. of drops =%d \n", kstats.tp_drops );
+	fprintf( stderr, "no. of drops =%d \n", kstats.tp_drops );
         //exit(0);	
    }
   struct timeval now; 
@@ -171,6 +172,6 @@ int k_pkt_stats(int in_fd)
   } else {
     perror("ioctl(SIOCGTSTAMP)\n");
   }
-  printf( "last %d/%d blocks dropped, block delay is %d ms,", kstats.tp_drops, kstats.tp_packets, delay);
+  printf( "last %d/%d blocks dropped, block delay is %d ms\n", kstats.tp_drops, kstats.tp_packets, delay);
   return 1;
 }

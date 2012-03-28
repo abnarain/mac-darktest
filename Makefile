@@ -20,10 +20,24 @@ include $(INCLUDE_DIR)/package.mk
 define Package/mac-darktest
 	SECTION:=net
 	CATEGORY:=Network
-	TITLE:=sniffes packets on wireless interface
+	TITLE:= collects wireless statistics from PHY to Network layer
 	URL:=http://doesnotexist.com
-	DEPENDS:=+libpcap 
+	DEPENDS:=+zlib +libnl-tiny 
 endef
+
+#TARGET_CPPFLAGS:= \
+        $(TARGET_CPPFLAGS) \
+        -DCONFIG_LIBNL20 \
+        -D_GNU_SOURCE
+#        -I$(STAGING_DIR)/usr/include/mac80211 \
+        -I$(STAGING_DIR)/usr/include/libnl-tiny \
+
+#MAKE_FLAGS += \
+        CFLAGS="$(TARGET_CPPFLAGS) $(TARGET_CFLAGS)" \
+        LDFLAGS="$(TARGET_LDFLAGS)" \
+#        NL1FOUND="" NL2FOUND=Y \
+        NLLIBNAME="libnl-tiny" \
+        LIBS="-lnl-tiny" \
 
 define Build/Prepare
 	mkdir -p $(PKG_BUILD_DIR)
