@@ -38,52 +38,10 @@ struct jigdump_hdr
 	u_int16_t snaplen_;
 
 	u_int8_t antenna_;
-	u_int16_t prev_errs_;
 
-	u_int64_t mac_time_; //epoch time when first bit arrives mac
-
-	u_int32_t fcs_;
 	// these are only valid in tx frame
 } __attribute__ ((packed));
 
 #define JIGBLOCK_MAX_SIZE (16000)
-struct jigblk_hdr
-{
-	u_int32_t magic_;
-	int32_t cmpr_sz_;
-	int32_t orig_sz_;
-	int32_t bid_;
-	int32_t pid_;
-	int32_t seek_; 
-	int64_t time_; /* start time */
-	int64_t duration_; /* end time - start time */
-	u_int16_t n_pkts_;
-} __attribute__ ((packed));
-
-struct pstat
-{
-	int64_t time_; /* start time */
-	u_int32_t n_pkts_;
-	u_int32_t n_empty_;
-	u_int32_t n_crc_[14];
-	u_int32_t n_ok_ [14];
-	u_int32_t n_80211_mgmt_;
-	u_int32_t n_80211_beacon_;
-	u_int32_t n_80211_probe_;
-	u_int32_t n_80211_ctrl_;
-	u_int32_t n_80211_rts_;
-	u_int32_t n_80211_cts_;
-	u_int32_t n_80211_ack_;
-	u_int32_t n_80211_data_;
-	u_int32_t n_80211_data_d_[4];
-	u_int32_t n_80211_data_n_[4];
-	u_int32_t n_arp_[4];
-	u_int32_t n_icmp_[4];
-	u_int32_t n_tcp_[4];
-	u_int32_t n_udp_[4];
-} __attribute__ ((packed));
-
-#define JIGBLK_HDR_MAGIC (0xa4b3c2f3)
-
 
 #endif
