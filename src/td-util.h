@@ -107,67 +107,6 @@ extern unsigned char *snapend;
         (IS_CHAN_PUREG(flags) || IS_CHAN_G(flags))
 
 
-#ifdef LBL_ALIGN
-
-#ifdef HAVE___ATTRIBUTE__
-typedef struct {
-        u_int16_t       val;
-} __attribute__((packed)) unaligned_u_int16_t;
-
-typedef struct {
-        u_int32_t       val;
-} __attribute__((packed)) unaligned_u_int32_t;
-
-#define EXTRACT_16BITS(p) \
-        ((u_int16_t)ntohs(((const unaligned_u_int16_t *)(p))->val))
-#define EXTRACT_32BITS(p) \
-        ((u_int32_t)ntohl(((const unaligned_u_int32_t *)(p))->val))
-#define EXTRACT_64BITS(p) \
-        ((u_int64_t)(((u_int64_t)ntohl(((const unaligned_u_int32_t *)(p) + 0)->val)) << 32 | \
-                     ((u_int64_t)ntohl(((const unaligned_u_int32_t *)(p) + 1)->val)) << 0))
-
-#else /* HAVE___ATTRIBUTE__ */
-/*
- * We don't have __attribute__, so do unaligned loads of big-endian
- * quantities the hard way - fetch the bytes one at a time and
- * assemble them.
- */
-#define EXTRACT_16BITS(p) \
-        ((u_int16_t)((u_int16_t)*((const u_int8_t *)(p) + 0) << 8 | \
-                     (u_int16_t)*((const u_int8_t *)(p) + 1)))
-#define EXTRACT_32BITS(p) \
-        ((u_int32_t)((u_int32_t)*((const u_int8_t *)(p) + 0) << 24 | \
-                     (u_int32_t)*((const u_int8_t *)(p) + 1) << 16 | \
-                     (u_int32_t)*((const u_int8_t *)(p) + 2) << 8 | \
-                     (u_int32_t)*((const u_int8_t *)(p) + 3)))
-#define EXTRACT_64BITS(p) \
-        ((u_int64_t)((u_int64_t)*((const u_int8_t *)(p) + 0) << 56 | \
-                     (u_int64_t)*((const u_int8_t *)(p) + 1) << 48 | \
-                     (u_int64_t)*((const u_int8_t *)(p) + 2) << 40 | \
-                     (u_int64_t)*((const u_int8_t *)(p) + 3) << 32 | \
-                     (u_int64_t)*((const u_int8_t *)(p) + 4) << 24 | \
-                     (u_int64_t)*((const u_int8_t *)(p) + 5) << 16 | \
-                     (u_int64_t)*((const u_int8_t *)(p) + 6) << 8 | \
-                     (u_int64_t)*((const u_int8_t *)(p) + 7)))
-#endif /* HAVE___ATTRIBUTE__ */
-#else /* LBL_ALIGN */
-/*
- * The processor natively handles unaligned loads, so we can just
- * cast the pointer and fetch through it.
- */
-#define EXTRACT_16BITS(p) \
-        ((u_int16_t)ntohs(*(const u_int16_t *)(p)))
-#define EXTRACT_32BITS(p) \
-        ((u_int32_t)ntohl(*(const u_int32_t *)(p)))
-#define EXTRACT_64BITS(p) \
-        ((u_int64_t)(((u_int64_t)ntohl(*((const u_int32_t *)(p) + 0))) << 32 | \
-                     ((u_int64_t)ntohl(*((const u_int32_t *)(p) + 1))) << 0))
-#endif // LBL_ALIGN 
-
-#define EXTRACT_24BITS(p) \
-        ((u_int32_t)((u_int32_t)*((const u_int8_t *)(p) + 0) << 16 | \
-                     (u_int32_t)*((const u_int8_t *)(p) + 1) << 8 | \
-                     (u_int32_t)*((const u_int8_t *)(p) + 2)))
 
 /*
  * Macros to extract possibly-unaligned little-endian integral values.
@@ -221,67 +160,16 @@ static const int ieee80211_htrates[16] = {
   260,            /* IFM_IEEE80211_MCS15 */
 };
 
-#define EXTRACT_LE_16BITS(p) \
-  ((u_int16_t)((u_int16_t)*((const u_int8_t *)(p) + 1) << 8 | \
-	       (u_int16_t)*((const u_int8_t *)(p) + 0)))
-
-#define FC_TYPE(fc)             (((fc) >> 2) & 0x3)
-#define FC_SUBTYPE(fc)          (((fc) >> 4) & 0xF)
-#define FC_ORDER(fc)            ((fc) & 0x8000)
-
 
 #define FC_TO_DS(fc)            ((fc) & 0x0100)
 #define FC_FROM_DS(fc)          ((fc) & 0x0200)
 
 #define FCF_FLAGS(x)           (((x) & 0xFF00) >> 8)
 
-#define MGT_FRAME            0x00  /* Frame type is management */
-#define CONTROL_FRAME        0x01  /* Frame type is control */
-#define DATA_FRAME           0x02  /* Frame type is Data */
+#define MGT_FRAME            0x0  /* Frame type is management */
+#define CONTROL_FRAME        0x1  /* Frame type is control */
+#define DATA_FRAME           0x2  /* Frame type is Data */
 
-
-#define MGT_ASSOC_REQ          0x00  /* association request        */
-#define MGT_ASSOC_RESP         0x01  /* association response       */
-#define MGT_REASSOC_REQ        0x02  /* reassociation request      */
-#define MGT_REASSOC_RESP       0x03  /* reassociation response     */
-#define MGT_PROBE_REQ          0x04  /* Probe request              */
-#define MGT_PROBE_RESP         0x05  /* Probe response             */
-#define MGT_MEASUREMENT_PILOT  0x06  /* Measurement Pilot          */
-#define MGT_BEACON             0x08  /* Beacon frame               */
-#define MGT_ATIM               0x09  /* ATIM                       */
-#define MGT_DISASS             0x0A  /* Disassociation             */
-#define MGT_AUTHENTICATION     0x0B  /* Authentication             */
-#define MGT_DEAUTHENTICATION   0x0C  /* Deauthentication           */
-#define MGT_ACTION             0x0D  /* Action                     */
-#define MGT_ACTION_NO_ACK      0x0E  /* Action No Ack              */
-#define MGT_ARUBA_WLAN         0x0F  /* Aruba WLAN Specific        */
-
-//#define CTRL_CONTROL_WRAPPER 0x17  /* Control Wrapper        */
-#define CTRL_BLOCK_ACK_REQ   0x18  /* Block ack Request        */
-#define CTRL_BLOCK_ACK       0x19  /* Block ack          */
-//#define CTRL_PS_POLL         0x1A  /* power-save poll               */
-//#define CTRL_RTS             0x1B  /* changed by abhinav request to send */
-//#define CTRL_CTS             0x1C  /* clear to send                 */
-#define CTRL_ACKNOWLEDGEMENT 0x1D  /* acknowledgement               */
-#define CTRL_CFP_END         0x1E  /* contention-free period end    */
-#define CTRL_CFP_ENDACK      0x1F  /* contention-free period end/ack */
-
-#define DATA                        0x20  /* Data                       */
-#define DATA_CF_ACK                 0x21  /* Data + CF-Ack              */
-#define DATA_CF_POLL                0x22  /* Data + CF-Poll             */
-#define DATA_CF_ACK_POLL            0x23  /* Data + CF-Ack + CF-Poll    */
-#define DATA_NULL_FUNCTION          0x24  /* Null function (no data)    */
-#define DATA_CF_ACK_NOD             0x25  /* CF-Ack (no data)           */
-#define DATA_CF_POLL_NOD            0x26  /* CF-Poll (No data)          */
-#define DATA_CF_ACK_POLL_NOD        0x27  /* CF-Ack + CF-Poll (no data) */
-
-#define DATA_QOS_DATA               0x28  /* QoS Data                   */
-#define DATA_QOS_DATA_CF_ACK        0x29  /* QoS Data + CF-Ack        */
-#define DATA_QOS_DATA_CF_POLL       0x2A  /* QoS Data + CF-Poll      */
-#define DATA_QOS_DATA_CF_ACK_POLL   0x2B  /* QoS Data + CF-Ack + CF-Poll    */
-#define DATA_QOS_NULL               0x2C  /* QoS Null        */
-#define DATA_QOS_CF_POLL_NOD        0x2E  /* QoS CF-Poll (No Data)      */
-#define DATA_QOS_CF_ACK_POLL_NOD    0x2F  /* QoS CF-Ack + CF-Poll (No Data) */
 
 #define DATA_SHORT_HDR_LEN     24
 #define DATA_LONG_HDR_LEN      30

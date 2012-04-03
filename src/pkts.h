@@ -6,6 +6,8 @@ struct rcv_pkt {
   int64_t timestamp;
   // jigdump header 
   int8_t rssi;
+  u_int8_t channel_rcv;
+  float rate;
   u_int16_t  freq ;
   u_int8_t ath_crc_err;
   u_int8_t ath_phy_err;
@@ -45,9 +47,6 @@ struct rcv_pkt {
   }p;
 
   // I have to fix to get these to get the values 
-  u_int8_t channel_rcv;
-  float rate;
-  float rate_mcs_idx ;
 
 };
 

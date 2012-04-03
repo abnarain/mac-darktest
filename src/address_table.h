@@ -1,17 +1,26 @@
 #ifndef _ADDRESS_TABLE_T
 #define _ADDRESS_TABLE_T
 
-#define MAC_TABLE_ENTRIES 255
+#define MAC_TABLE_ENTRIES 2048
+
 #define BISMARK_ID_FILENAME "/etc/bismark/ID"
+
 #define UPDATE_FILENAME_DIGEST "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-digest-%d.gz"
-#define PENDING_UPDATE_FILENAME_DIGEST "/tmp/wifi-analyzer/current-digest-update.gz"
-#define UPDATE_FILENAME "/tmp/bismark-uploads/wifi-analyzer/%s-%" PRIu64 "-%d.gz"
-#define PENDING_UPDATE_FILENAME "/tmp/wifi-analyzer/current-update.gz"
+#define PENDING_UPDATE_FILENAME_DIGEST "/tmp/wifi-beacons/current-digest-update.gz"
+
+
+#define UPDATE_MGMT_FILENAME "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-m-%d.gz"
+#define UPDATE_CONTROL_FILENAME "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-c-%d.gz"
+#define UPDATE_DATA_FILENAME "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-d-%d.gz"
+#define UPDATE_NONE_FILENAME "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-n-%d.gz"
+
+#define PENDING_UPDATE_MGMT_FILENAME "/tmp/wifi-beacons/current-mgmt-update.gz"
+#define PENDING_UPDATE_CONTROL_FILENAME "/tmp/wifi-beacons/current-control-update.gz"
+#define PENDING_UPDATE_DATA_FILENAME "/tmp/wifi-beacons/current-data-update.gz"
+#define PENDING_UPDATE_NONE_FILENAME "/tmp/wifi-beacons/current-none-update.gz"
 
 extern int64_t start_timestamp_microseconds;
 extern char bismark_id[256];
-int initialize_bismark_id() ;
-int write_update();
 
 typedef struct {
 
@@ -22,7 +31,6 @@ typedef struct {
   float rssi_sum;
   float rssi_lin_sum;
   float rate;
-  float rate_mcs_idx ;
   u_int16_t freq ;
   u_int8_t antenna;
   u_int32_t ath_crc_err_count;
@@ -41,7 +49,6 @@ typedef struct {
   u_int8_t channel;
   
   float rate_max;
-  u_int32_t mgmt_count;
   u_int32_t beacon_count ;
   u_int32_t n_enabled_count ;
   u_int8_t cap_privacy ;
@@ -62,7 +69,6 @@ typedef struct {
   float rssi_sum;
   float rssi_lin_sum;
   float rate;
-  float rate_mcs_idx ;
   u_int16_t freq ;
   u_int8_t antenna;
   u_int32_t ath_crc_err_count;
@@ -77,7 +83,6 @@ typedef struct {
   u_int32_t more_flag_count ;
   u_int32_t strictly_ordered_count;
 
-  u_int32_t ctrl_count; 
   u_int32_t cts_count ;
   u_int32_t rts_count ;
   u_int32_t ack_count ;
@@ -108,7 +113,6 @@ typedef struct {
   u_int32_t more_flag_count ;
   u_int32_t strictly_ordered_count;
 
-  u_int32_t data_count;
   u_int32_t st_data_count;
   u_int32_t arp_count;
   u_int32_t ip_count;
@@ -146,7 +150,6 @@ typedef struct {
 
 } none_address_table_entry_t;
 
-
 typedef struct {
   /* A list of MAC mappings. A mapping ID is simply
    * that mapping's index offset into this array. */
@@ -159,6 +162,7 @@ typedef struct {
   /* The index of the last mapping sent to the server. */
   int added_since_last_update;
 } none_address_table_t;
+
 
 typedef struct {
   /* A list of MAC mappings. A mapping ID is simply
@@ -216,13 +220,14 @@ extern control_address_table_t control_address_table;
 void address_control_table_init(control_address_table_t* table);
 int address_control_table_lookup(control_address_table_t*  table, struct rcv_pkt * paket) ;
 int address_control_table_write_update(control_address_table_t* table, gzFile handle) ;
-
-
+/*
 extern none_address_table_t none_address_table;
 void address_none_table_init(none_address_table_t* table);
 int address_none_table_lookup(none_address_table_t*  table, struct rcv_pkt * paket) ;
 int address_none_table_write_update(none_address_table_t* table, gzFile handle) ;
-
+*/
+int initialize_bismark_id() ;
+int write_update();
 
 
 

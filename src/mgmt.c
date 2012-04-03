@@ -46,7 +46,7 @@ int fn_print(register const uchar *s, register const uchar *ep, struct rcv_pkt *
   }
   if(ret==1)
     temp[i]='\0';
-  //  printf(" ssid is :!!%s!!\n",temp);
+//    printf(" ssid is: %s\n",temp);
   memcpy(paket->p.mgmt_pkt.essid,temp, strlen(temp));
   return ret;
 }
