@@ -24,11 +24,6 @@ typedef u_int16_t u16;
 typedef u_int16_t __le16;
 typedef u_int64_t __le64;
 
-#define ATH9K_RXERR_CRC           0x01
-#define ATH9K_RXERR_PHY           0x02
-#define ATH9K_RXERR_FIFO          0x04
-#define ATH9K_RXERR_DECRYPT       0x08
-#define ATH9K_RXERR_MIC           0x10
 
 
 #define le16_to_cpu(_x) (_x)

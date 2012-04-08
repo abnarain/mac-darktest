@@ -16,7 +16,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include<net/if.h>
-
+#include <assert.h>
 #include "ieee80211.h"
 #include "create-interface.h"
 #include "jigdump.h"
@@ -26,6 +26,7 @@
 #include "nl_funcs.h"
 #include "address_table.h"
 #include "clients_table.h"
+#include "anonymization.h"
 
 #define UPDATE_PERIOD_SECS 60
 #define NUM_MICROS_PER_SECOND 1e6
@@ -37,53 +38,31 @@ u_int32_t pkt_count[2];
 static int prev_phy_err_1;
 static int prev_phy_err_0;
 static int c=0;
-
-
+unsigned int overflow =~(1<<31)  ;
 
 int j_hdr(struct jigdump_hdr *jh , int in_idx, struct rcv_pkt * paket){  
-
   paket->rssi=jh->rssi_;
   paket-> antenna= jh->antenna_;
   paket-> freq = jh->freq_ ;
-  //  printf("antenna=%d  \n", paket->antenna);
-  //TODO: What to do with all these flags ? save or discard ?
+  //TODO: What to do with all these flags ? save or discard ?  RX_FLAG_SHORT_GI, RX_FLAG_HT RX_FLAG_40MHZ 
   if(!jh->rate_ || (jh->flags_ & RX_FLAG_HT )){
-    u_int8_t _r = jh->rate_idx_ ;
-    if (_r & 0x80)
-      paket->rate=  (.5 * ieee80211_htrates[(_r) & 0xf]);    	
-  }else 
+      paket->rate=  (.5 * ieee80211_htrates[(jh->rate_idx_) & 0xf]);    	
+  }else { 
     paket->rate =   (float)((.5 * ((jh->rate_) & 0x7f)));
-
-  
-  if(jh->flags_ & RX_FLAG_HT ){	
-    printf(" !!!!!!! IS HT  \n");
-  }
-  
-  if(jh->flags_ &  RX_FLAG_SHORT_GI ){	
-    printf(" !!!!!!! IS short GI  \n");
   }
   if(jh->flags_ & RX_FLAG_SHORTPRE ){	
     paket->short_preamble_err=1;
-    printf(" !!!!!!! IS SHORT PRE  \n");
   }
-  if(jh->flags_ & RX_FLAG_40MHZ ){
-    printf(" !!!!!!! IS 40   \n");
-  }
-  
-  //TODO:  in_idx ??  printf("phy err %u \n", jh->status_ );
-  if(jh->antenna_ ==0){
+  if(in_idx ==0){
     paket->ath_phy_err= jh->phyerr_ - prev_phy_err_0;
     prev_phy_err_0 =jh->phyerr_ ;
-    
+//    printf("0 , in_idx=%d phyerr =%u %u  %u  \n", in_idx, jh->phyerr_,prev_phy_err_0,  paket->ath_phy_err);
   }else  {
     paket->ath_phy_err= jh->phyerr_ - prev_phy_err_1;
-    prev_phy_err_1 =jh->phyerr_ ;
-    
+    prev_phy_err_1 =jh->phyerr_ ;    
+//    printf("1 , in phyerr = %u %u  %u  \n", in_idx, jh->phyerr_, prev_phy_err_1, paket->ath_phy_err);
   }
-  //    printf("interface= %d phy_cnt= %u \n",in_idx,paket->ath_phy_err);
-  //TODO: whats with the querying on only one interface ?  
-  if ( !(jh->flags_ & (RX_FLAG_FAILED_FCS_CRC | RX_FLAG_FAILED_PLCP_CRC )) && paket->antenna ==1 ) {
-  }
+
   if (jh->flags_ & (RX_FLAG_FAILED_FCS_CRC | RX_FLAG_FAILED_PLCP_CRC )) {
     paket->ath_crc_err=1;
   }
@@ -127,15 +106,15 @@ int j_hdr(struct jigdump_hdr *jh , int in_idx, struct rcv_pkt * paket){
   else if (flags & IEEE80211_CHAN_HT40U){
     paket->channel_rcv=12;
   } 
-  //   printf("--\n");
-  return 1;
+  return 0;
+
 }
 
 int update_pkt(struct jigdump_hdr* jh, int pkt_len, int in_idx, struct rcv_pkt * paket){ 
   if (sigprocmask(SIG_BLOCK, &block_set, NULL) < 0) {
     perror("sigprocmask");
     exit(1);
-	}
+  }
   ++pkt_count[in_idx];
   snapend = (uchar *)((uchar*) jh+jh->caplen_) ;
   
@@ -144,205 +123,355 @@ int update_pkt(struct jigdump_hdr* jh, int pkt_len, int in_idx, struct rcv_pkt *
   struct ctrl_cts_t *cts= NULL;
   struct ctrl_ack_t *ack =NULL;;
   uchar  * ptr2,* ptr ,* p, *none;
-  j_hdr(jh , in_idx, paket);
-
-	if(paket->ath_crc_err ==1){
-	printf(".");
-	return 1;
-	}
-//  struct  ieee80211_hdr* f = (struct ieee80211_hdr*)(jh+1) ;
-//  u_int16_t fc = EXTRACT_LE_16BITS(&f->frame_control);
-	p = (uchar*) ((uchar*) jh+sizeof(struct jigdump_hdr));
-  u_int16_t fc =  EXTRACT_LE_16BITS(p);
-
-  if (FC_MORE_DATA(fc))
-    paket->more_data =1;
-  if (FC_MORE_FLAG(fc))
-    paket->more_flag =1;
-  if (FC_ORDER(fc))
-    paket->strictly_ordered=1;
-  if (FC_RETRY(fc))
-    paket->retry=1;
-  if (FC_WEP(fc))
-    paket->wep_enc=1;
+  j_hdr(jh , in_idx, paket);  
+  c++;
+  if(c%800==0){
+    query_kernel();
+  }
   
-  switch (FC_TYPE(fc)) {
-  case MGT_FRAME:
-    paket->pkt_type=MGT_FRAME;
-    switch(FC_SUBTYPE(fc)){ 
-    case ST_BEACON:
-      hp = (struct mgmt_header_t *) ((uchar*) jh+ sizeof(struct jigdump_hdr)); 
-      memcpy(paket->mac_address,hp->sa,6);
-      ptr= hp->sa;
-//      printf(" beacon sa: %02x:%02x:%02x:%02x:%02x:%02x\n",ptr[0],ptr[1],ptr[2],ptr[3],ptr[4],ptr[5]);
-      p = (uchar*) (jh+1) ;
-      p+=   MGT_FRAME_HDR_LEN  ;
-      paket->p.mgmt_pkt.pkt_subtype=ST_BEACON;		
-      handle_beacon(p, pkt_len, paket);
-      address_mgmt_table_lookup(&mgmt_address_table,paket);
-      //ptr=paket->mac_address;
-      //printf(" beacon sa: %02x:%02x:%02x:%02x:%02x:%02x\n",ptr[0],ptr[1],ptr[2],ptr[3],ptr[4],ptr[5]);
-      
-      break;
-    case  ST_PROBE_REQUEST : 
-      //      hp = (struct mgmt_header_t *) (jh+ 1);
-      //    ptr= hp->sa;
-      //        printf("response  sa: %02x:%02x:%02x:%02x:%02x:%02x\n",ptr[0],ptr[1],ptr[2],ptr[3],ptr[4],ptr[5]);
-    case ST_PROBE_RESPONSE :
-      paket->p.mgmt_pkt.pkt_subtype=ST_PROBE_RESPONSE;		
-      hp = (struct mgmt_header_t *) (jh+ 1);
-      ptr= hp->sa;
-      memcpy(paket->mac_address,hp->sa,6);
-      // memcpy(paket->p.mgmt_pkt.da,hp->sa,6);
-      address_mgmt_table_lookup(&mgmt_address_table,paket);
-      break ;
-    }
-    break;
-  case CONTROL_FRAME:
-    paket->pkt_type= CONTROL_FRAME;
-    switch(FC_SUBTYPE(fc)){ 
-    case  CTRL_RTS :
-      rts =  (struct ctrl_rts_t *) ((uchar*) jh+sizeof(struct jigdump_hdr)) ; 
-      memcpy(paket->mac_address,rts->ra,6); 
-      paket->p.ctrl_pkt.pkt_subtype = CTRL_RTS;
-      memcpy(paket->p.ctrl_pkt.ta,rts->ta,6);
-      address_control_table_lookup(&control_address_table,paket);
+  if(rand()/RAND_MAX <0.1 ){
+    goto proc_mask; 
+  }
+  //  struct  ieee80211_hdr* f = (struct ieee80211_hdr*)(jh+1) ;
+  //  u_int16_t fc = EXTRACT_LE_16BITS(&f->frame_control);
+  p = (uchar*) ((uchar*) jh+sizeof(struct jigdump_hdr));
+  u_int16_t fc =  EXTRACT_LE_16BITS(p);
+    if (FC_MORE_DATA(fc))
+      paket->more_data =1;
+    if (FC_MORE_FLAG(fc))
+      paket->more_flag =1;
+    if (FC_ORDER(fc))
+      paket->strictly_ordered=1;
+    if (FC_RETRY(fc))
+      paket->retry=1;
+    if (FC_WEP(fc))
+      paket->wep_enc=1;
+    if(paket->ath_crc_err==0){ 
+      switch (FC_TYPE(fc)) {
+      case MGT_FRAME:
+	paket->pkt_type=MGT_FRAME;
+	hp = (struct mgmt_header_t *) ((uchar*) jh+ sizeof(struct jigdump_hdr)); 
+	memcpy(paket->mac_address,hp->sa,6);
+	switch(FC_SUBTYPE(fc)){ 
+	case ST_BEACON:
+	  p = (uchar*) (jh+1) ;
+	  p+=   MGT_FRAME_HDR_LEN  ;
+	  paket->p.mgmt_pkt.pkt_subtype=ST_BEACON;		
+	  handle_beacon(p, pkt_len, paket);
+	  address_mgmt_table_lookup(&mgmt_address_table,paket);
+	  //	print_mac(paket->mac_address,"beacon" );
+	  break;
+	case  ST_PROBE_REQUEST : 
+	  //	print_mac(  (uchar*) (((struct mgmt_header_t *) (jh+ 1))->sa)  ,"request");
+	case ST_PROBE_RESPONSE :
+	  paket->p.mgmt_pkt.pkt_subtype=ST_PROBE_RESPONSE;		
+	  hp = (struct mgmt_header_t *) (jh+ 1);
+	  //memcpy(paket->p.mgmt_pkt.da,hp->sa,6);
+	  address_mgmt_table_lookup(&mgmt_address_table,paket);
+	  break ;
+	default :
+	  address_mgmt_table_lookup(&mgmt_address_table,paket);
+	}
+	break;
+      case CONTROL_FRAME:
+	paket->pkt_type= CONTROL_FRAME;
+	switch(FC_SUBTYPE(fc)){ 
+	case  CTRL_RTS :
+	  rts =  (struct ctrl_rts_t *) ((uchar*) jh+sizeof(struct jigdump_hdr)) ; 
+	  memcpy(paket->mac_address,rts->ra,6); 
+	  paket->p.ctrl_pkt.pkt_subtype = CTRL_RTS;
+	  memcpy(paket->p.ctrl_pkt.ta,rts->ta,6);
+	  address_control_table_lookup(&control_address_table,paket);
 #if 0 
-      uchar * a = paket->mac_address;
-      uchar * t =paket->p.ctrl_pkt.ta;
-	if(paket->ath_crc_err ==0){
-//      printf(" rts ra: %02x:%02x:%02x:%02x:%02x:%02x\n",a[0],a[1],a[2],a[3],a[4],a[5]);
-      printf(" rts ta: %02x:%02x:%02x:%02x:%02x:%02x\n",t[0],t[1],t[2],t[3],t[4],t[5]);     
-		//	printf("rssi =%d \n", paket->rssi);
-		}
+	  print_mac(paket->mac_address,"rts ra " );
+	  print_mac(paket->p.ctrl_pkt.ta, "rts ta ");
 #endif
-      break;
-    case CTRL_CTS :
-      cts=  (struct ctrl_cts_t * ) ((uchar*) jh+ sizeof(struct jigdump_hdr)); 
-      paket->p.ctrl_pkt.pkt_subtype = CTRL_CTS;
-      memcpy(paket->mac_address,cts->ra,6);
-      address_control_table_lookup(&control_address_table,paket);
+	  break;
+	case CTRL_CTS :
+	  cts=  (struct ctrl_cts_t * ) ((uchar*) jh+ sizeof(struct jigdump_hdr)); 
+	  paket->p.ctrl_pkt.pkt_subtype = CTRL_CTS;
+	  memcpy(paket->mac_address,cts->ra,6);
+	  address_control_table_lookup(&control_address_table,paket);
 #if 0			
-      ptr=paket->mac_address;
-			if(paket->ath_crc_err ==0)
-      printf(" cts ra: %02x:%02x:%02x:%02x:%02x:%02x\n",ptr[0],ptr[1],ptr[2],ptr[3],ptr[4],ptr[5]);
-	//		printf("rssi =%d", paket->rssi);
+	  print_mac(paket->mac_address,"cts ");
 #endif
-      break;
-    case CTRL_ACK :
-      ack=  (struct ctrl_ack_t * ) ((uchar*) jh+sizeof(struct jigdump_hdr)) ;
-      paket->p.ctrl_pkt.pkt_subtype = CTRL_ACK;
-      memcpy(paket->mac_address,ack->ra,6);
-      address_control_table_lookup(&control_address_table,paket);
+	  break;
+	case CTRL_ACK :
+	  ack=  (struct ctrl_ack_t * ) ((uchar*) jh+sizeof(struct jigdump_hdr)) ;
+	  paket->p.ctrl_pkt.pkt_subtype = CTRL_ACK;
+	  memcpy(paket->mac_address,ack->ra,6);
+	  address_control_table_lookup(&control_address_table,paket);
 #if 0
-      ptr=paket->mac_address;
-      printf("!!! ack sa: %02x:%02x:%02x:%02x:%02x:%02x\n",ptr[0],ptr[1],ptr[2],ptr[3],ptr[4],ptr[5]);
+	  print_mac(paket->mac_address, "ack ");
 #endif 
-      break;
-    }
-    break ;   
-  case DATA_FRAME : {
-    paket->pkt_type=DATA_FRAME;
-    p= (uchar*)(jh+1);
-    int hdrlen  = (FC_TO_DS(fc) && FC_FROM_DS(fc)) ? 30 : 24;
-    if (DATA_FRAME_IS_QOS(FC_SUBTYPE(fc)))
-      hdrlen += 2;
-    // but there is 8 bytes offset after mac header of 26 bytes, thats for qos data packet
+	  break;
+	default :
+	  address_control_table_lookup(&control_address_table,paket);
+	}
+	break ;   
+      case DATA_FRAME : {
+	paket->pkt_type=DATA_FRAME;
+	p= (uchar*)(jh+1);
+	int hdrlen  = (FC_TO_DS(fc) && FC_FROM_DS(fc)) ? 30 : 24;
+	if (DATA_FRAME_IS_QOS(FC_SUBTYPE(fc)))
+	  hdrlen += 2;
+	// but there is 8 bytes offset after mac header of 26 bytes, thats for qos data packet
 #define ADDR1  (p + 4)
 #define ADDR2  (p + 10)
 #define ADDR3  (p + 16)
-    if (!FC_TO_DS(fc) && !FC_FROM_DS(fc)) {
-      memcpy(paket->mac_address,ADDR2,6);
-      memcpy(paket->p.data_pkt.dst,ADDR1,6);
+	if (!FC_TO_DS(fc) && !FC_FROM_DS(fc)) {
+	  memcpy(paket->mac_address,ADDR2,6);
+	  memcpy(paket->p.data_pkt.dst,ADDR1,6);
 #if 0
-      printf("\n 1  src = %02x:%02x:%02x:%02x:%02x:%02x \n", ADDR2[0],ADDR2[1],ADDR2[2],ADDR2[3],ADDR2[4],ADDR2[5]);
-      printf("1  dst =  %02x:%02x:%02x:%02x:%02x:%02x \n",ADDR1[0], ADDR1[1], ADDR1[2], ADDR1[3], ADDR1[4], ADDR1[5]);
+	  print_mac(ADDR2,"1 addr2");
+	  print_mac(ADDR1,"1 addr1");
 #endif
-    } else if (!FC_TO_DS(fc) && FC_FROM_DS(fc)) {
-      memcpy(paket->mac_address,ADDR3,6);
-      memcpy(paket->p.data_pkt.dst,ADDR1,6);
+	} else if (!FC_TO_DS(fc) && FC_FROM_DS(fc)) {
+	  memcpy(paket->mac_address,ADDR3,6);
+	  memcpy(paket->p.data_pkt.dst,ADDR1,6);
 #if 0
-      printf("\n 2 srcp =  %02x:%02x:%02x:%02x:%02x:%02x \n", ADDR3[0], ADDR3[1], ADDR3[2], ADDR3[3], ADDR3[4], ADDR3[5]); 
-      printf("2 dstp =  %02x:%02x:%02x:%02x:%02x:%02x \n ", ADDR1[0], ADDR1[1], ADDR1[2], ADDR1[3], ADDR1[4], ADDR1[5]);
-#endif
-    } else if (FC_TO_DS(fc) && !FC_FROM_DS(fc)) {
-      memcpy(paket->mac_address,ADDR2,6);
-      memcpy(paket->p.data_pkt.dst,ADDR3,6);
+	print_mac(ADDR3,"2 src");
+	print_mac(ADDR1,"2 dest");
+#endif	
+
+	} else if (FC_TO_DS(fc) && !FC_FROM_DS(fc)) {
+	  memcpy(paket->mac_address,ADDR2,6);
+	  memcpy(paket->p.data_pkt.dst,ADDR3,6);
 #if 0
-      printf("\n 3 srcp =  %02x:%02x:%02x:%02x:%02x:%02x \n",ADDR2[0], ADDR2[1], ADDR2[2], ADDR2[3], ADDR2[4], ADDR2[5]); 
-      printf(" 3 dstp = %02x:%02x:%02x:%02x:%02x:%02x\n ",ADDR3[0], ADDR3[1], ADDR3[2], ADDR3[3], ADDR3[4], ADDR3[5]);
+	  print_mac(ADDR2,"3 src");
+	  print_mac(ADDR3,"3 dest");
 #endif
-    } else if (FC_TO_DS(fc) && FC_FROM_DS(fc)) {
+	} else if (FC_TO_DS(fc) && FC_FROM_DS(fc)) {
 #define ADDR4  (p + 24)
-      memcpy(paket->mac_address,ADDR4,6);
-      memcpy(paket->p.data_pkt.dst,ADDR4,6);
+	  memcpy(paket->mac_address,ADDR3,6);
+	  memcpy(paket->p.data_pkt.dst,ADDR4,6); //TODO : again 
 #if 0
-      printf("\n 4 srcp =  %02x:%02x:%02x:%02x:%02x:%02x \n",ADDR4[0], ADDR4[1], ADDR4[2], ADDR4[3], ADDR4[4], ADDR4[5]); 
-      printf(" 4 dstp=  %02x:%02x:%02x:%02x:%02x:%02x\n",ADDR3[0], ADDR3[1], ADDR3[2], ADDR3[3], ADDR3[4], ADDR3[5]); 
+	  print_mac(ADDR4,"4 src");
+	  print_mac(ADDR3,"4 dest");
 #endif
 #undef ADDR4
-    }
+	}
 #undef ADDR1
 #undef ADDR2
-#undef ADDR3 
-    handle_data(fc,p,hdrlen,paket); //pass caplen for later checks
-    address_data_table_lookup(&data_address_table,paket);
-  }
-    break;
-  default :
+#undef ADDR3
+	handle_data(fc,p,hdrlen,paket); //pass caplen for later checks
+	address_data_table_lookup(&data_address_table,paket);
+      }
+      break;
+      default :
+	perror("Impossible packet \n");
+      }
+    }else {
+      /*CRC Error packets 
+     */
+      
+      switch (FC_TYPE(fc)) {
+      case MGT_FRAME:
+	hp = (struct mgmt_header_t *) ((uchar*) jh+ sizeof(struct jigdump_hdr)); 
+	memcpy(paket->mac_address,hp->sa,6);
+	paket->pkt_type=MGT_FRAME;
+      switch(FC_SUBTYPE(fc)){ 
+      case ST_BEACON:
+	//print_mac(hp->sa,"beacon " );
+	p = (uchar*) (jh+1) ;
+	p+=   MGT_FRAME_HDR_LEN  ;
+	paket->p.mgmt_pkt.pkt_subtype=ST_BEACON;		
+	handle_beacon(p, pkt_len, paket);
+	address_mgmt_table_lookup(&mgmt_address_table_err,paket);
+	break;
+      case  ST_PROBE_REQUEST : 
+	//	print_mac(  (uchar*) (((struct mgmt_header_t *) (jh+ 1))->sa)  ,"request");
+      case ST_PROBE_RESPONSE :
+	paket->p.mgmt_pkt.pkt_subtype=ST_PROBE_RESPONSE;		
+	//memcpy(paket->p.mgmt_pkt.da,hp->sa,6);
+	address_mgmt_table_lookup(&mgmt_address_table_err,paket);
+	break ;
+      default : 
+	address_mgmt_table_lookup(&mgmt_address_table_err,paket);
+      }
+      break;
+      case CONTROL_FRAME:
+	paket->pkt_type= CONTROL_FRAME;
+	switch(FC_SUBTYPE(fc)){ 
+	case  CTRL_RTS :
+	  rts =  (struct ctrl_rts_t *) ((uchar*) jh+sizeof(struct jigdump_hdr)) ; 
+	  memcpy(paket->mac_address,rts->ra,6); 
+	  paket->p.ctrl_pkt.pkt_subtype = CTRL_RTS;
+	  memcpy(paket->p.ctrl_pkt.ta,rts->ta,6);
+	  address_control_table_lookup(&control_address_table_err,paket);
+#if 0 
+	  print_mac(paket->mac_address,"rts ra " );
+	  print_mac(paket->p.ctrl_pkt.ta, "rts ta ");
+#endif
+	  break;
+	case CTRL_CTS :
+	  cts=  (struct ctrl_cts_t * ) ((uchar*) jh+ sizeof(struct jigdump_hdr)); 
+	  paket->p.ctrl_pkt.pkt_subtype = CTRL_CTS;
+	  memcpy(paket->mac_address,cts->ra,6);
+	  address_control_table_lookup(&control_address_table_err,paket);
+#if 0			
+	  print_mac(paket->mac_address,"cts ");
+#endif
+	  break;
+	case CTRL_ACK :
+	  ack=  (struct ctrl_ack_t * ) ((uchar*) jh+sizeof(struct jigdump_hdr)) ;
+	  paket->p.ctrl_pkt.pkt_subtype = CTRL_ACK;
+	  memcpy(paket->mac_address,ack->ra,6);
+	  address_control_table_lookup(&control_address_table_err,paket);
 #if 0
-    p=(uchar*)(jh+1);
-    ptr=paket->mac_address;
-    printf(" none addr: %02x:%02x:%02x:%02x:%02x:%02x\n",ptr[0],ptr[1],ptr[2],ptr[3],ptr[4],ptr[5]);
-    int idx=0;
-    for(idx=0;idx<20;idx++)
-      printf("%02x ",*(p+idx));
-#endif 
-    paket->pkt_type= 0x4;   
-	/* CONTROL PKT SIZE : 52-58 bytes
-	*  BEACON PKT SIZE : can be as large as 320 bytes. Atleast 100 bytes 
-	*  DATA PKT SIZE : anything greater than 400 bytes is data packet
-	*  check the fields of FS,DS to get the mac address offset 
-	*  Can be 52 size packets too ! 
-	*/
-		int a ;
-/*
-    printf("none pkt len=%d\n",pkt_len);
-		p=(uchar*)(jh+1);
- 		for(a=0; a<40;a++)						
-				printf("%02x ",*(p+a));
-
-
-	printf("\nrssi=%d ant=%d feq=%u \n",   paket->rssi , paket-> antenna,  paket-> freq );
-*/
-    if(pkt_len <60) { 
-      rts =  (struct ctrl_rts_t *) (jh+1) ; 
-      memcpy(paket->mac_address,rts->ra,6);
-      //   address_none_table_lookup(&none_address_table,paket);
-    }else if (pkt_len< 215){
-    //mgmt pkt 
-		}else if(pkt_len>400){
-		//data pkt
-
-		}else {
-
-		}
-    
+	  print_mac(paket->mac_address,"ack ");
+#endif
+	default :
+	  address_control_table_lookup(&control_address_table_err,paket); 
+	  break;
+	}
+	break ;   
+      case DATA_FRAME : {
+      paket->pkt_type=DATA_FRAME;
+      p= (uchar*)(jh+1);
+      int hdrlen  = (FC_TO_DS(fc) && FC_FROM_DS(fc)) ? 30 : 24;
+      if (DATA_FRAME_IS_QOS(FC_SUBTYPE(fc)))
+	hdrlen += 2;
+#define ADDR1  (p + 4)
+#define ADDR2  (p + 10)
+#define ADDR3  (p + 16)
+      if (!FC_TO_DS(fc) && !FC_FROM_DS(fc)) {
+	memcpy(paket->mac_address,ADDR2,6);
+	memcpy(paket->p.data_pkt.dst,ADDR1,6);
+#if 0
+	print_mac(ADDR2,"1 addr2");
+	print_mac(ADDR1,"1 addr1");
+#endif
+	
+      } else if (!FC_TO_DS(fc) && FC_FROM_DS(fc)) {
+	memcpy(paket->mac_address,ADDR3,6);
+	memcpy(paket->p.data_pkt.dst,ADDR1,6);
+#if 0
+	print_mac(ADDR3,"2 src");
+	print_mac(ADDR1,"2 dest");
+#endif	
+	
+      } else if (FC_TO_DS(fc) && !FC_FROM_DS(fc)) {
+	memcpy(paket->mac_address,ADDR2,6);
+	memcpy(paket->p.data_pkt.dst,ADDR3,6);
+#if 0
+	print_mac(ADDR2,"3 src");
+	print_mac(ADDR3,"3 dest");
+#endif
+	
+      } else if (FC_TO_DS(fc) && FC_FROM_DS(fc)) {
+#define ADDR4  (p + 24)
+	memcpy(paket->mac_address,ADDR3,6);
+	memcpy(paket->p.data_pkt.dst,ADDR4,6); //TODO : again 
+	
+#if 0
+	print_mac(ADDR4,"4 src");
+	print_mac(ADDR3,"4 dest");
+#endif
+#undef ADDR4
+      }
+#undef ADDR1
+#undef ADDR2
+#undef ADDR3
+      
+      // but there is 8 bytes offset after mac header of 26 bytes, thats for qos data packet
+      handle_data(fc,p,hdrlen,paket); //pass caplen for later checks
+      address_data_table_lookup(&data_address_table_err,paket);
+    }
+	break;
+      default :
+	paket->pkt_type= 0x4;
+	/* CONTROL PKT SIZE : 41 bytes
+       *  BEACON PKT SIZE : can be as large as (11n) 320 bytes. Atleast 100 bytes (a/g) 110 bytes 
+       *  LAB BEACONS : 156-231 bytes ; check for fffffffff 
+       *  PROBES SIZE : 101,149,219,225 , 204, 83 
+       *  DATA PKT SIZE : anything greater than 400 bytes is data packet
+       *  check the fields of FS,DS to get the mac address offset 
+       *  Can be 55 size packets too ! 
+       */
+	if(pkt_len>400 ){ //definitely a data packets 
+	  p= (uchar*)(jh+1);			
+	  int hdrlen  = (FC_TO_DS(fc) && FC_FROM_DS(fc)) ? 30 : 24;
+	  if (DATA_FRAME_IS_QOS(FC_SUBTYPE(fc)))
+	    hdrlen += 2;
+	  //	data_pkt_tests(p,paket,fc);
+#define ADDR1  (p + 4)
+#define ADDR2  (p + 10)
+#define ADDR3  (p + 16)
+	  if (!FC_TO_DS(fc) && !FC_FROM_DS(fc)) {
+	    memcpy(paket->mac_address,ADDR2,6);
+	    memcpy(paket->p.data_pkt.dst,ADDR1,6);
+#if 0
+	    print_mac(ADDR2,"1 addr2");
+	    print_mac(ADDR1,"1 addr1");
+#endif
+	    
+	  } else if (!FC_TO_DS(fc) && FC_FROM_DS(fc)) {
+	    memcpy(paket->mac_address,ADDR3,6);
+	    memcpy(paket->p.data_pkt.dst,ADDR1,6);
+#if 0
+	print_mac(ADDR3,"2 src");
+	print_mac(ADDR1,"2 dest");
+#endif	
+	
+	  } else if (FC_TO_DS(fc) && !FC_FROM_DS(fc)) {
+	memcpy(paket->mac_address,ADDR2,6);
+	memcpy(paket->p.data_pkt.dst,ADDR3,6);
+#if 0
+	print_mac(ADDR2,"3 src");
+	print_mac(ADDR3,"3 dest");
+#endif
+	
+	  } else if (FC_TO_DS(fc) && FC_FROM_DS(fc)) {
+#define ADDR4  (p + 24)
+	    memcpy(paket->mac_address,ADDR3,6);
+	    memcpy(paket->p.data_pkt.dst,ADDR4,6); //TODO : again 
+	    
+#if 0
+	    print_mac(ADDR4,"4 src");
+	    print_mac(ADDR3,"4 dest");
+#endif
+#undef ADDR4
+	  }
+#undef ADDR1
+#undef ADDR2
+#undef ADDR3
+	  handle_data(fc,p,hdrlen,paket); //pass caplen for later checks
+	  address_data_table_lookup(&data_address_table_err,paket);
+	}else if(pkt_len>111 && pkt_len <340){ 
+	  hp = (struct mgmt_header_t *) ((uchar*) jh+ sizeof(struct jigdump_hdr));
+	  if(!memcmp(hp->da,"fffffffffff",6)){
+	    memcpy(paket->mac_address,hp->sa,6);
+	    paket->p.mgmt_pkt.pkt_subtype=ST_BEACON;
+	    handle_beacon(p, pkt_len, paket);
+	    address_mgmt_table_lookup(&mgmt_address_table_err,paket);	
+	  }
+	}else if ( pkt_len <50){
+	  //TODO: call it a control packet 
+	  
+	}
+	//check for packets with size 52 or more for control or none ? 
+      //rest goto none
+#if 0
+	p=(uchar*)(jh+1);
+	int idx=0;
+	for(idx=0;idx<20;idx++)
+	  printf("%02x ",*(p+idx));
+#endif
+      static int j=0;
+      paket->mac_address[0]= ++j ; paket->mac_address[1]=j++;
+      address_none_table_lookup(&none_address_table,paket);
+      }
   }
-  c++;
-  if(c%500==0){
-    printf("\nquery kernel %d\n",c);
-    query_kernel();
-  }
-  //TODO: add the logging capability 
-  if (sigprocmask(SIG_UNBLOCK, &block_set, NULL) < 0) {
-    perror("sigprocmask");
-    exit(1);
-  }
-  return 1;  
+ proc_mask: 
+    if (sigprocmask(SIG_UNBLOCK, &block_set, NULL) < 0) {
+      perror("sigprocmask");
+      exit(1);
+    }
+    return 1;  
 }
 
-int create_header(uchar *jb, const int jb_len, int in_fd, int in_idx, struct timeval * ts ){
+int create_header(uchar *jb, const int jb_len, int in_fd, int in_idx ){
   uchar* b=NULL;
   for(b = jb; b < jb+ jb_len; ) {
     struct jigdump_hdr *jh = (struct jigdump_hdr *)b ;
@@ -364,16 +493,14 @@ int create_header(uchar *jb, const int jb_len, int in_fd, int in_idx, struct tim
     }
     struct rcv_pkt paket ;
     memset(&paket,0, sizeof(struct rcv_pkt));
-    paket.timestamp = ts->tv_sec * NUM_MICROS_PER_SECOND + ts->tv_usec;
     update_pkt(jh, jb_len, in_idx, &paket);
   }
-  //  printf("I am out\n");
   return 1;
 }
 
 int rcv_timeo=-1;
 
-int read_raw_socket( uchar*jb, int *jb_len, int in_fd, struct timeval * ts){
+int read_raw_socket( uchar*jb, int *jb_len, int in_fd){
   const int jb_sz = *jb_len;  
   int timeout,rcv_bytes=0;
   for(timeout=0;;){
@@ -393,7 +520,7 @@ int read_raw_socket( uchar*jb, int *jb_len, int in_fd, struct timeval * ts){
     }
     if (EAGAIN == errno) {
       perror("EAGAIN \n");
-      //XXX :check for writing into int descriptor; pcap(4.1.1)  doesn't do it ... should I ? 
+      //TODO :check for writing into int descriptor; pcap(4.1.1)  doesn't do it ... should I ? 
       if ((++timeout)*rcv_timeo >= 600) { //~10 min
 	fprintf(stderr, "recvfrom timeout %d times, abort\n", timeout);
 	return 1;
@@ -409,16 +536,15 @@ int read_raw_socket( uchar*jb, int *jb_len, int in_fd, struct timeval * ts){
 int capture_(int in_fd, int in_idx)
 {
   uchar jb[JIGBLOCK_MAX_SIZE];
-  struct timeval ts;
   int jb_len= sizeof(jb);
   int ok=0 ;
-  ok=read_raw_socket(jb, &jb_len,in_fd, &ts );
+  ok=read_raw_socket(jb, &jb_len,in_fd);
   if(!ok){
-    create_header(jb,jb_len, in_fd, in_idx, &ts); 
+    create_header(jb,jb_len, in_fd, in_idx); 
   }else{
     perror("read_raw_socket failed \n");
   }
-  if(pkt_count[in_idx]%10 == 0){     
+  if(pkt_count[in_idx]%50 == 0){     
     k_pkt_stats(in_fd);
   }
   // printf("in capture\n");
@@ -432,8 +558,6 @@ void set_next_alarm() {
 void handle_signals(int sig) {
   if (sig == SIGINT || sig == SIGTERM) {
     write_update();
-    address_data_table_init(&data_address_table);
-    address_data_table_init(&data_address_table);
     exit(0);
   } else if (sig == SIGALRM) {
     write_update();
@@ -460,16 +584,29 @@ void initialize_signal_handler() {
 
 int main(int argc, char* argv[])
 {
+  if(argc =!2){
+    printf("usage : binary <mon interface 1> <mon interface 2> \n");
+    exit(1);
+  }
   initialize_bismark_id();
+  srand ( time(NULL) );
+  /* if( anonymization_init()){
+     perror("Error initializing anonymizer\n");
+     return 1; 
+     }
+  */
   address_data_table_init(&data_address_table);
+  address_data_table_init(&data_address_table_err);
   address_mgmt_table_init(&mgmt_address_table);
+  address_mgmt_table_init(&mgmt_address_table_err);
   address_control_table_init(&control_address_table);
+  address_control_table_init(&control_address_table_err);
+  address_none_table_init(&none_address_table);
+
   address_client_table_init(&client_address_table);
-  //TODO:none table to init
-  //address_none_table_init(&none_address_table);
+ 
   gettimeofday(&start_timeval, NULL);
   start_timestamp_microseconds  = start_timeval.tv_sec * NUM_MICROS_PER_SECOND + start_timeval.tv_usec;
-  
   
   initialize_signal_handler();
   set_next_alarm();
@@ -505,7 +642,6 @@ int main(int argc, char* argv[])
 	  if( FD_ISSET(in_fd_1, &fd_wait)) {
 	    capture_(in_fd_1,1);
 	  }
-	  
 	}
       // comes here when select times out or when a packet is processed
 

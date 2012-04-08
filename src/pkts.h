@@ -3,14 +3,13 @@
 
 struct rcv_pkt {
   u_int8_t mac_address[6];
-  int64_t timestamp;
   // jigdump header 
   int8_t rssi;
   u_int8_t channel_rcv;
   float rate;
   u_int16_t  freq ;
-  u_int8_t ath_crc_err;
-  u_int8_t ath_phy_err;
+  u_int32_t ath_crc_err;
+  u_int32_t ath_phy_err;
   u_int8_t antenna;
   u_int8_t short_preamble_err;
   //radiotap header 

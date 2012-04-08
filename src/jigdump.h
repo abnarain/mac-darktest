@@ -2,7 +2,7 @@
 #define _JIGDUMP_H_
 
 #define JIGDUMP_HDR_VERSION 0xae
-#define JIGDUMP_HDR_SNAPLEN 120 // 802.11 (24) + LLC (4) + IP(88) + FCS (4)
+#define JIGDUMP_HDR_SNAPLEN 132 // 802.11 (32) + LLC (8) + IP(88) + FCS (4)
 #define JIGDUMP_HDR_SNAPLEN_DHCP 400
 #define JIGDUMP_HDR_SNAPLEN_MAX 400
 #define JIGDUMP_HDR_F_RX    0x0
@@ -14,33 +14,27 @@
 #define JIGDUMP_HDR_F_PREV_ERRS_OVERFLOW 0x20
 #define JIGDUMP_HDR_F_TSF_LEAP   0x40
 #define JIGDUMP_HDR_F_MAC_TSC   0x80
-//#include <sys/types.h>
-struct phyerr_hdr
-{
-	u_int16_t offset_:14;
-	u_int16_t type_:2;
-} __attribute__ ((packed));
 
 struct jigdump_hdr
 {
 	u_int8_t version_;
 	u_int8_t hdrlen_;
+
 	u_int32_t phyerr_;
 
 	int8_t rssi_;
-	u_int8_t flags_;
+	int flags_;
 	u_int8_t channel_;
 	int freq_ ;
 	u_int16_t rate_;
-	u_int32_t rate_idx_ ; 
+	u_int32_t rate_idx_;
 
 	u_int16_t caplen_;
 	u_int16_t snaplen_;
 
 	u_int8_t antenna_;
-
-	// these are only valid in tx frame
 } __attribute__ ((packed));
+
 
 #define JIGBLOCK_MAX_SIZE (16000)
 

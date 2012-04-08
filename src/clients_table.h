@@ -2,8 +2,8 @@
 #define  CLIENT_TABLE_H_
 #define CLIENT_TABLE_ENTRIES 32
 #include <zlib.h>
-#define UPDATE_CLIENT_FILENAME "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-cl-%d.gz"
-#define PENDING_UPDATE_CLIENT_FILENAME "/tmp/wifi-beacons/current-client-update.gz"
+#define UPDATE_CLIENT_FILENAME "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-cl-%d.gz"
+#define PENDING_UPDATE_CLIENT_FILENAME "/tmp/mac-analyzer/current-client-update.gz"
 
 typedef struct {
 
@@ -20,6 +20,8 @@ typedef struct {
 	u_int32_t prev_tx_pkts ;
 	u_int32_t prev_rx_pkts ;
   u_int32_t prev_tx_failed; 
+	
+	u_int8_t dev; 
 }client_entry_t ; 
 
 typedef struct {
@@ -37,14 +39,10 @@ typedef struct {
 
 
 extern client_address_table_t client_address_table;
-//int address_client_table_write_update(gzFile handle , client_address_table_t* table) ;
 void address_client_table_init(client_address_table_t* table);
-
-
-
 int address_client_table_lookup(client_address_table_t*  table, u_int32_t c_tx_failed,	
 				u_int32_t c_tx_retries , u_int32_t c_tx_pkts,	
-				u_int32_t c_rx_pkts, unsigned char * m_add ,char * dev,				
+				u_int32_t c_rx_pkts, const u_int8_t * m_add ,int dev,				
 				int tx_bitrate, int rx_bitrate);
 
 int address_client_table_write_update(gzFile handle, client_address_table_t* table);

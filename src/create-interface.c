@@ -27,12 +27,12 @@ int64_t timeval_to_int64(const struct timeval* tv)
   return (int64_t)(((u_int64_t)(*tv).tv_sec)* 1000000ULL + ((u_int64_t)(*tv).tv_usec));
 }
 
-int config_radio_interface(const char device[])
+static int config_radio_interface(const char device[])
 {
   int sd = socket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
   struct iwreq    wrq;
   memset(&wrq, 0, sizeof(wrq));
-  strncpy(wrq.ifr_name, device, IFNAMSIZ); // changed ifr_name to ifrn_name 
+  strncpy(wrq.ifr_name, device, IFNAMSIZ);
   wrq.u.mode = IW_MODE_MONITOR;
   if (0 > ioctl(sd, SIOCSIWMODE, &wrq)) {
     perror("ioctl(SIOCSIWMODE) \n");
@@ -42,7 +42,7 @@ int config_radio_interface(const char device[])
   return 0;
 }
 
-int up_radio_interface(const char device[])
+static int up_radio_interface(const char device[])
 {
   int sd = socket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
   struct ifreq ifr;
@@ -64,8 +64,7 @@ int up_radio_interface(const char device[])
   }  
   return 0;
 }
-
-int down_radio_interface(const char device[])
+static int down_radio_interface(const char device[])
 {
   int sd = socket(PF_INET, SOCK_DGRAM, IPPROTO_IP);
   struct ifreq ifr;
@@ -87,7 +86,8 @@ int down_radio_interface(const char device[])
   return 0;
 }
 
-int open_infd(const char device[])
+
+static int open_infd(const char device[])
 {
   int skbsz ;
   skbsz = 1U << 23 ; 
@@ -124,6 +124,7 @@ int open_infd(const char device[])
     perror("getsockopt(in_fd, SO_RCVBUF)\n");
     return -1;
   }
+  printf("size is %d %d \n ", skbsz_l, skbsz);
   int rcv_timeo = 600;
   struct timeval rto = { rcv_timeo, 0};
   if (rcv_timeo > 0 &&
@@ -137,18 +138,24 @@ int open_infd(const char device[])
 
 int checkup(char * device){
   int in_fd ;
-  if (down_radio_interface(device))
-    return 1;
-  if (up_radio_interface(device))
-    return 1;
-  if (config_radio_interface(device))
-    return 1;
+  if (down_radio_interface(device)){
+    perror("down radio interface \n");
+    exit(1);
+  }
+
+  if (up_radio_interface(device)){
+    perror("up radio interface \n");
+  }
+
+  if (config_radio_interface(device)){
+    perror("config radio intereface ");
+  }
   in_fd = open_infd(device);
-  
+
   return in_fd;
 }
 
-
+int static drops=0; 
 int k_pkt_stats(int in_fd)
 {
   struct tpacket_stats kstats;
@@ -160,9 +167,9 @@ int k_pkt_stats(int in_fd)
   if (0 == kstats.tp_drops)
     return 1;
   if(kstats.tp_drops >0) {
-	fprintf( stderr, "no. of drops =%d \n", kstats.tp_drops );
-        //exit(0);	
+	fprintf( stderr, "#drops =%d \n", kstats.tp_drops-drops );
    }
+		drops= kstats.tp_drops ;
   struct timeval now; 
   struct timeval _tstamp;
   gettimeofday(&now, NULL);
@@ -172,6 +179,6 @@ int k_pkt_stats(int in_fd)
   } else {
     perror("ioctl(SIOCGTSTAMP)\n");
   }
-  printf( "last %d/%d blocks dropped, block delay is %d ms\n", kstats.tp_drops, kstats.tp_packets, delay);
+  syslog( LOG_ERR,"last %d/%d blocks dropped, block delay is %d ms\n", kstats.tp_drops, kstats.tp_packets, delay);
   return 1;
 }

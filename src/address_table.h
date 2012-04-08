@@ -2,22 +2,23 @@
 #define _ADDRESS_TABLE_T
 
 #define MAC_TABLE_ENTRIES 2048
+#define NONE_TABLE_ENTRIES 65535
 
 #define BISMARK_ID_FILENAME "/etc/bismark/ID"
 
-#define UPDATE_FILENAME_DIGEST "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-digest-%d.gz"
-#define PENDING_UPDATE_FILENAME_DIGEST "/tmp/wifi-beacons/current-digest-update.gz"
+#define UPDATE_FILENAME_DIGEST "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-digest-%d.gz"
+#define PENDING_UPDATE_FILENAME_DIGEST "/tmp/mac-analyzer/current-digest-update.gz"
 
 
-#define UPDATE_MGMT_FILENAME "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-m-%d.gz"
-#define UPDATE_CONTROL_FILENAME "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-c-%d.gz"
-#define UPDATE_DATA_FILENAME "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-d-%d.gz"
-#define UPDATE_NONE_FILENAME "/tmp/bismark-uploads/wifi-beacons/%s-%" PRIu64 "-n-%d.gz"
+#define UPDATE_MGMT_FILENAME "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-m-%d.gz"
+#define UPDATE_CONTROL_FILENAME "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-c-%d.gz"
+#define UPDATE_DATA_FILENAME "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-d-%d.gz"
+#define UPDATE_NONE_FILENAME "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-n-%d.gz"
 
-#define PENDING_UPDATE_MGMT_FILENAME "/tmp/wifi-beacons/current-mgmt-update.gz"
-#define PENDING_UPDATE_CONTROL_FILENAME "/tmp/wifi-beacons/current-control-update.gz"
-#define PENDING_UPDATE_DATA_FILENAME "/tmp/wifi-beacons/current-data-update.gz"
-#define PENDING_UPDATE_NONE_FILENAME "/tmp/wifi-beacons/current-none-update.gz"
+#define PENDING_UPDATE_MGMT_FILENAME "/tmp/mac-analyzer/current-mgmt-update.gz"
+#define PENDING_UPDATE_CONTROL_FILENAME "/tmp/mac-analyzer/current-control-update.gz"
+#define PENDING_UPDATE_DATA_FILENAME "/tmp/mac-analyzer/current-data-update.gz"
+#define PENDING_UPDATE_NONE_FILENAME "/tmp/mac-analyzer/current-none-update.gz"
 
 extern int64_t start_timestamp_microseconds;
 extern char bismark_id[256];
@@ -153,7 +154,7 @@ typedef struct {
 typedef struct {
   /* A list of MAC mappings. A mapping ID is simply
    * that mapping's index offset into this array. */
-  none_address_table_entry_t entries[MAC_TABLE_ENTRIES];
+  none_address_table_entry_t entries[NONE_TABLE_ENTRIES];
   /* The index of the first (i.e., oldest) mapping in the list */
   int first;
   /* The index of the last (i.e., newest) mapping in the list */
@@ -207,25 +208,28 @@ typedef struct {
 
 
 extern mgmt_address_table_t mgmt_address_table;
+extern mgmt_address_table_t mgmt_address_table_err;
 void address_mgmt_table_init(mgmt_address_table_t* table);
 int address_mgmt_table_lookup(mgmt_address_table_t*  table, struct rcv_pkt * paket) ;
-int address_mgmt_table_write_update(mgmt_address_table_t* table, gzFile handle) ;
+int address_mgmt_table_write_update(mgmt_address_table_t* table, mgmt_address_table_t* table_err, gzFile handle) ;
 
 extern data_address_table_t data_address_table;
+extern data_address_table_t data_address_table_err;
 void address_data_table_init(data_address_table_t* table);
 int address_data_table_lookup(data_address_table_t*  table, struct rcv_pkt * paket) ;
-int address_data_table_write_update(data_address_table_t* table, gzFile handle) ;
+int address_data_table_write_update(data_address_table_t* table,data_address_table_t* table_err , gzFile handle) ;
 
 extern control_address_table_t control_address_table;
+extern control_address_table_t control_address_table_err;
 void address_control_table_init(control_address_table_t* table);
 int address_control_table_lookup(control_address_table_t*  table, struct rcv_pkt * paket) ;
-int address_control_table_write_update(control_address_table_t* table, gzFile handle) ;
-/*
+int address_control_table_write_update(control_address_table_t* table,control_address_table_t* table_err,  gzFile handle) ;
+
 extern none_address_table_t none_address_table;
 void address_none_table_init(none_address_table_t* table);
 int address_none_table_lookup(none_address_table_t*  table, struct rcv_pkt * paket) ;
 int address_none_table_write_update(none_address_table_t* table, gzFile handle) ;
-*/
+
 int initialize_bismark_id() ;
 int write_update();
 

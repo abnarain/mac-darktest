@@ -311,3 +311,10 @@ int handle_data( u_int16_t fc, uchar *p,int hdrlen, struct rcv_pkt * paket ){
   }
   return 1 ; 
 }
+
+
+
+void print_mac(u_int8_t* ptr ,const char* type){
+	  printf("%s; %02x:%02x:%02x:%02x:%02x:%02x\n", type,ptr[0],ptr[1],ptr[2],ptr[3],ptr[4],ptr[5]);
+}
+
