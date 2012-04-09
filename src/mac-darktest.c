@@ -44,6 +44,7 @@ int j_hdr(struct jigdump_hdr *jh , int in_idx, struct rcv_pkt * paket){
   paket->rssi=jh->rssi_;
   paket-> antenna= jh->antenna_;
   paket-> freq = jh->freq_ ;
+  printf("version %d \n",jh->version_ );
   //TODO: What to do with all these flags ? save or discard ?  RX_FLAG_SHORT_GI, RX_FLAG_HT RX_FLAG_40MHZ 
   if(!jh->rate_ || (jh->flags_ & RX_FLAG_HT )){
       paket->rate=  (.5 * ieee80211_htrates[(jh->rate_idx_) & 0xf]);    	
@@ -129,9 +130,9 @@ int update_pkt(struct jigdump_hdr* jh, int pkt_len, int in_idx, struct rcv_pkt *
     query_kernel();
   }
   
-  if(rand()/RAND_MAX <0.1 ){
+  //  if(rand()/RAND_MAX <0.1 ){
     goto proc_mask; 
-  }
+    //  }
   //  struct  ieee80211_hdr* f = (struct ieee80211_hdr*)(jh+1) ;
   //  u_int16_t fc = EXTRACT_LE_16BITS(&f->frame_control);
   p = (uchar*) ((uchar*) jh+sizeof(struct jigdump_hdr));
@@ -522,11 +523,15 @@ int read_raw_socket( uchar*jb, int *jb_len, int in_fd){
       perror("EAGAIN \n");
       //TODO :check for writing into int descriptor; pcap(4.1.1)  doesn't do it ... should I ? 
       if ((++timeout)*rcv_timeo >= 600) { //~10 min
-	fprintf(stderr, "recvfrom timeout %d times, abort\n", timeout);
+			printf("recvfrom timeout %d times, abort\n", timeout);
+			
 	return 1;
       }  
     }else if (errno !=0){
-      perror("Error");
+			printf("errno =%d\n",errno);
+      perror("Error");			
+			strerror(errno);
+			
       return 1;
     }
   }
@@ -582,6 +587,35 @@ void initialize_signal_handler() {
   sigaddset(&block_set, SIGALRM);
 }
 
+void process_pkt(uchar* nothing ,const pkthdr * p_h, const uchar* jb){
+
+  uchar* b=NULL;
+  int jb_len = p_h->caplen;
+  for(b = jb; b < jb+ jb_len; ) {
+    struct jigdump_hdr *jh = (struct jigdump_hdr *)b ;
+    if(jh-> version_ != JIGDUMP_HDR_VERSION ){
+      syslog(LOG_ERR,"invalid jigdump_hdr (v=%u) snaplen=%u, discard\n",   (uint)jh->version_,  jh->snaplen_);
+      return ;
+    }
+    if (jh->hdrlen_ != sizeof(*jh)) {
+      syslog(LOG_ERR," jigdump hdr_len %d mis-match (%d), discard\n", (int)jh->hdrlen_, (int)sizeof(*jh));
+      return ;
+    }
+    // test_func_inspection (jh);	
+    //TODO: check for channel here ! when you get better
+    b += sizeof(*jh) + jh->snaplen_ ;
+    if (b > jb + jb_len) {
+      syslog(LOG_ERR,"data is mis-aligned %d:%d, caplen=%d discard block\n", (int)(b-jb), jb_len, jh->snaplen_);
+      
+      return ;
+    }
+    struct rcv_pkt paket ;
+        memset(&paket,0, sizeof(struct rcv_pkt));
+        update_pkt(jh, jb_len, 1, &paket);
+  }
+
+}
+
 int main(int argc, char* argv[])
 {
   if(argc =!2){
@@ -615,15 +649,17 @@ int main(int argc, char* argv[])
   char  *device1= argv[2];
   int retval;
   int in_fd_0= checkup(device0);
+  
+  printf("main : we are in main for the first time \n");
   int in_fd_1= checkup(device1);
+  printf("main : we are in main second time \n");
   fd_set fd_wait; 
   printf("in main\n");
+
   struct timeval st;
-  
   for(;;)
     {
-      FD_ZERO(&fd_wait);
-      
+      FD_ZERO(&fd_wait);      
       FD_SET(in_fd_0, &fd_wait);
       FD_SET(in_fd_1, &fd_wait);
       st.tv_sec  = 0;
@@ -637,10 +673,14 @@ int main(int argc, char* argv[])
 	  break;
 	default:
 	  if( FD_ISSET(in_fd_0, &fd_wait)) {
-	    capture_(in_fd_0,0);
+//			printf("I am in 0\n");
+			pcap_read_linux_mmap(in_fd_0, &handle[0], -1, process_pkt, NULL);
+//	    capture_(in_fd_0,0);
 	  }
 	  if( FD_ISSET(in_fd_1, &fd_wait)) {
-	    capture_(in_fd_1,1);
+	//		printf("I am in 1\n");
+			pcap_read_linux_mmap(in_fd_1, &handle[0], -1, process_pkt , NULL);
+//	    capture_(in_fd_1,1);
 	  }
 	}
       // comes here when select times out or when a packet is processed

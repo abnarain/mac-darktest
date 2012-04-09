@@ -10,10 +10,10 @@
 #define PENDING_UPDATE_FILENAME_DIGEST "/tmp/mac-analyzer/current-digest-update.gz"
 
 
-#define UPDATE_MGMT_FILENAME "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-m-%d.gz"
+#define UPDATE_MGMT_FILENAME 		"/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-m-%d.gz"
 #define UPDATE_CONTROL_FILENAME "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-c-%d.gz"
-#define UPDATE_DATA_FILENAME "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-d-%d.gz"
-#define UPDATE_NONE_FILENAME "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-n-%d.gz"
+#define UPDATE_DATA_FILENAME    "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-d-%d.gz"
+#define UPDATE_NONE_FILENAME    "/tmp/bismark-uploads/mac-analyzer/%s-%" PRIu64 "-n-%d.gz"
 
 #define PENDING_UPDATE_MGMT_FILENAME "/tmp/mac-analyzer/current-mgmt-update.gz"
 #define PENDING_UPDATE_CONTROL_FILENAME "/tmp/mac-analyzer/current-control-update.gz"
