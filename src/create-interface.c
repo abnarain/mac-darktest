@@ -1,5 +1,5 @@
-#include<errno.h>
-#include<error.h>
+#include <errno.h>
+#include <error.h>
 #include <sys/ioctl.h>
 #include <stdio.h>
 #include <sys/time.h>
@@ -23,12 +23,18 @@
 #include <unistd.h>
 #include <poll.h>
 #include "create-interface.h"
-
+#include <fcntl.h>
 static int create_ring(int in_fd,in_info *handle);
 static void destroy_ring(int in_fd, in_info * handle);
 static int  prepare_tpacket_socket(int in_fd, in_info* handle );
+static int config_radio_interface(const char device[]);
+static int up_radio_interface(const char device[]);
+static int down_radio_interface(const char device[]);
+static int open_infd(const char device[]);
+static int setnonblock_mmap(in_info * handle);
+static int iface_get_id(int fd, const char *device);
+static int ind =0;
 in_info handle[2];
-
 
 u_int64_t timeval_to_int64(const struct timeval* tv)
 {
@@ -153,22 +159,30 @@ int checkup(char * device){
 
   if (up_radio_interface(device)){
     perror("up radio interface \n");
-		return -1;
+    return -1;
   }
-
+  
   if (config_radio_interface(device)){
     perror("config radio intereface ");
-		return -1;
+    return -1;
   }
   in_fd = open_infd(device);
   if(in_fd == -1){
     perror("Can't set socket option. Abort ");
-    exit(1);
+    return -1;
   }
-  static int ind =0;
-  memset(&handle[ind],'0',sizeof(in_info));
-  activate_mmap(in_fd, &handle[ind++]);
-  printf("done with actiating mmap \n");
+
+  
+  memset(&handle[ind],'\0',sizeof(in_info));
+  int retval ;
+	handle[ind].lo_ifindex = iface_get_id(in_fd,"lo");  
+  retval =activate_mmap(in_fd, &handle[ind]);
+  if (retval != 1){
+    fprintf(stderr, "Could not activate mmap \n");
+    return -1;
+  }
+  setnonblock_mmap(&handle[ind]); 
+  
   ind++;
   return in_fd;
 }
@@ -209,7 +223,6 @@ int k_pkt_stats(int in_fd)
 #   define HAVE_TPACKET2
 #  else
 #   define TPACKET_V1   0
-#error cant proceed
 #  endif /* TPACKET2_HDRLEN */
 # endif /* TPACKET_HDRLEN */ 
 
@@ -221,7 +234,6 @@ int k_pkt_stats(int in_fd)
 
 int activate_mmap(int in_fd, in_info* handle ){
   int ret;
-
   // Attempt to allocate a buffer to hold the contents of one packet, for use by the oneshot callback.
   handle->snapshot=8000; // mpdu is 7k+ for n packets 
   handle->oneshot_buffer = malloc(handle->snapshot);
@@ -229,86 +241,72 @@ int activate_mmap(int in_fd, in_info* handle ){
     printf("can't allocate oneshot buffer: %s",strerror(errno));
     return -1;
   }
-/*
+
   if (handle->buffer_size == 0) {
-    //TODO:  by default request 2M for the ring buffer 
-		printf("setting buffer size 1MB\n");
-    handle->buffer_size = 1024;
+  //TODO:  by default request 1M for the ring buffer 
+  printf("setting buffer size 1MB\n");
+  handle->buffer_size = 1024*1024;
   }else{
-		printf("handle buffer already set = %d \n",handle->buffer_size);
-	}
-*/
-  handle->buffer_size = 10244;
+  printf("handle buffer already set = %d \n",handle->buffer_size);
+  }
   
-	ret = prepare_tpacket_socket(in_fd, handle);
+  ret = prepare_tpacket_socket(in_fd, handle);
   if (ret != 1) {
+    fprintf(stderr,"Can't prepare tpacket sockets  \n");
     free(handle->oneshot_buffer);
     return ret;
   }
-	printf("going to create ring \n");
   ret = create_ring(in_fd,handle);
   if (ret != 1) {
-		printf("problem in create ring \n");
+    fprintf(stderr, "Can't create ring \n");
     free(handle->oneshot_buffer);
     return ret;
   }
-	printf("done with create ring \n");
   return 1;
 }
 
-#ifdef HAVE_PACKET_RING
-static int
-prepare_tpacket_socket(int in_fd, in_info* handle)
+static int prepare_tpacket_socket(int in_fd, in_info* handle)
 {
-#ifdef HAVE_TPACKET2
   socklen_t len;
   int val;
-#endif
   handle->tp_version = TPACKET_V1;
   handle->tp_hdrlen = sizeof(struct tpacket_hdr);
 
-#ifdef HAVE_TPACKET2
   // Probe whether kernel supports TPACKET_V2 
-  printf("HAVE_TPACKET2 \n");
   val = TPACKET_V2;
   len = sizeof(val);
   if (getsockopt(in_fd, SOL_PACKET, PACKET_HDRLEN, &val, &len) < 0) {
     if (errno == ENOPROTOOPT){
-      printf("Error: ENOPROTOOPT ; drive on \n");
+      perror("Error: ENOPROTOOPT ; drive on \n");
       return 1;       // no - just drive on 
     }
     // Yes - treat as a failure. 
-    printf("can't get TPACKET_V2 header len on packet socket: %s",  strerror(errno));
+    perror("can't get TPACKET_V2 header len on packet socket\n");
     return -1;
   }
   handle->tp_hdrlen = val;
-	printf("before TPACKET_V2\n");
   val = TPACKET_V2;
   if (setsockopt(in_fd, SOL_PACKET, PACKET_VERSION, &val, sizeof(val)) < 0) {
-    printf("can't activate TPACKET_V2 on packet socket: %s",strerror(errno));
-    exit(1);
+    perror("can't activate TPACKET_V2 on packet socket\n");
+    return -1 ;
   }
   handle->tp_version = TPACKET_V2;
-  printf("i am safe end of prepare socket \n");
-#endif // HAVE_TPACKET2 
   return 1;
 }
-#endif //HAVE_PACKET_RING
 
 static int create_ring(int in_fd, in_info *handle)
 {
   unsigned i, j, frames_per_block;
   struct tpacket_req req;
 
-  //Note that with large snapshot (say 64K) only a few frames  will be available in the ring even with pretty 
-	//large ring size (and a lot of memory will be unused). The snap len should be carefully chosen to achive best performance 
+  //TODO: Note that with large snapshot (say 64K) only a few frames  will be available in the ring even with pretty 
+  //large ring size (and a lot of memory will be unused). The snap len should be carefully chosen to achive best performance 
   req.tp_frame_size = TPACKET_ALIGN(handle->snapshot + TPACKET_ALIGN(handle->tp_hdrlen) + sizeof(struct sockaddr_ll));
   req.tp_frame_nr = handle->buffer_size/req.tp_frame_size;
 
   // compute the minumum block size that will handle this frame.  The block has to be page size aligned. 
   //  The max block size allowed by the kernel is arch-dependent and  it's not explicitly checked here. 
   req.tp_block_size = getpagesize();
-	printf("before  while loop \n");
   while (req.tp_block_size < req.tp_frame_size)
     req.tp_block_size <<= 1;
 	
@@ -322,7 +320,6 @@ static int create_ring(int in_fd, in_info *handle)
 
   if (setsockopt(in_fd, SOL_PACKET, PACKET_RX_RING, (void *) &req, sizeof(req))) {
     if ((errno == ENOMEM) && (req.tp_block_nr > 1)) {
-
       if (req.tp_frame_nr < 20)
 	req.tp_frame_nr -= 1;
       else
@@ -330,26 +327,20 @@ static int create_ring(int in_fd, in_info *handle)
       goto retry;
     }
     if (errno == ENOPROTOOPT) {
-      // We don't have ring buffer support in this kernel.
-      printf("We dont have ring buffer support in kernel ? \n"); 
+     	perror("No support for ring buffer\n"); 
       return 0;
     }
-    printf("can't create rx ring on packet socket: %s", strerror(errno));
-    exit(-1);
-  }else {
-    printf(" We set the packet rx ring structure \n");
+    perror("Can't create rx ring on packet socket\n");
+    return -1;
   }
-  printf("could not set the packet_rx_ring socket option \n ");
   // memory map the rx ring 
   handle->mmapbuflen = req.tp_block_nr * req.tp_block_size;
-  printf("mmapbuflen = %d\n ",handle->mmapbuflen);
   handle->mmapbuf = mmap(0, handle->mmapbuflen,PROT_READ|PROT_WRITE, MAP_SHARED, in_fd, 0);
   if (handle->mmapbuf == MAP_FAILED) {
-    printf("can't mmap rx ring: %s", strerror(errno));
+    perror("Can't mmap rx ring\n");
     destroy_ring(in_fd,handle);
     return -1;
   }
-
   // allocate a ring for each frame header pointer
   handle->cc = req.tp_frame_nr;
   handle->buffer = malloc(handle->cc * sizeof(union thdr *));
@@ -357,10 +348,7 @@ static int create_ring(int in_fd, in_info *handle)
     printf("can't allocate ring of frame headers: %s", strerror(errno));
     destroy_ring(in_fd,handle);
     return -1;
-  }else{
-	printf("buff len is %d\n", sizeof(handle->buffer));
-	}
-
+  }
   // fill the header ring with proper frame ptr
   handle->offset = 0;
   for (i=0; i<req.tp_block_nr; ++i) {
@@ -370,7 +358,6 @@ static int create_ring(int in_fd, in_info *handle)
       base += req.tp_frame_size;
     }
   }
-
   handle->bufsize = req.tp_frame_size;
   handle->offset = 0;
   return 1;
@@ -380,33 +367,31 @@ static int create_ring(int in_fd, in_info *handle)
 static void destroy_ring(int in_fd, in_info * handle )
 {
   struct tpacket_req req;
+  free(handle->oneshot_buffer);
   memset(&req, 0, sizeof(req));
   setsockopt(in_fd, SOL_PACKET, PACKET_RX_RING,(void *) &req, sizeof(req));
-
   // if ring is mapped, unmap it
   if (handle->mmapbuf) {
     // do not test for mmap failure, as we can't recover from any error 
     munmap(handle->mmapbuf, handle->mmapbuflen);
     handle->mmapbuf = NULL;
   }
+
 }
 
-static inline union thdr * pcap_get_ring_frame(in_info *handle, int status)
+static inline union thdr * get_ring_frame(in_info *handle, int status)
 {
   union thdr h;
-
   h.raw = RING_GET_FRAME(handle);
   switch (handle->tp_version) {
   case TPACKET_V1:
     if (status != (h.h1->tp_status ? TP_STATUS_USER :  TP_STATUS_KERNEL))
       return NULL;
     break;
-#ifdef HAVE_TPACKET2
   case TPACKET_V2:
     if (status != (h.h2->tp_status ? TP_STATUS_USER : TP_STATUS_KERNEL))
       return NULL;
     break;
-#endif
   }
   return h.raw;
 }
@@ -414,14 +399,13 @@ static inline union thdr * pcap_get_ring_frame(in_info *handle, int status)
 #ifndef POLLRDHUP
 #define POLLRDHUP 0
 #endif
-#if 1 
-int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handler callback, uchar *user){
+int read_mmap(int in_fd, in_info *handle, int max_packets, callback_handler callback, int interface ){
   int timeout;
   int pkts = 0;
   char c;
 
   // wait for frames availability
-  if (!pcap_get_ring_frame(handle, TP_STATUS_USER)) {
+  if (!get_ring_frame(handle, TP_STATUS_USER)) {
     struct pollfd pollinfo;
     int ret;
 
@@ -437,14 +421,14 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
     do {
       ret = poll(&pollinfo, 1, timeout);
       if (ret < 0 && errno != EINTR) {
-	printf("can't poll on packet socket: %s",strerror(errno));
+	perror("Can't poll on packet socket\n");
 	return -1;
       } else if (ret > 0 &&
 		 (pollinfo.revents & (POLLHUP|POLLRDHUP|POLLERR|POLLNVAL))) {	
 	// There's some indication other than "you can read on this descriptor" on the descriptor.
 	 
 	if (pollinfo.revents & (POLLHUP | POLLRDHUP)) {
-	  printf("Hangup on packet socket");
+	  fprintf(stderr,"Hangup on packet socket");
 	  return -1;
 	}
 	if (pollinfo.revents & POLLERR) {	  
@@ -453,10 +437,9 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
 	    continue;       // what, no error? 
 	  if (errno == ENETDOWN) {	    
 	    // The device on which we're capturing went away.
-	    //XXX - we should really return PCAP_ERROR_IFACE_NOT_UP but pcap_dispatch() etc. aren't defined to return that.	    
-	    printf("The interface went down");
+	    perror("The interface went down");
 	  } else {
-	    printf("Error condition on packet socket: %s", strerror(errno));
+	    perror("Error condition on packet socket\n");
 	  }
 	  return -1;
 	}
@@ -465,7 +448,7 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
 	  return -1;
 	}
       }
-      // check for break loop condition on interrupted syscall
+      //TODO: check for break loop condition on interrupted syscall
       if (handle->break_loop) {
 	handle->break_loop = 0;
 	return -1;
@@ -485,7 +468,7 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
     unsigned int tp_snaplen;
     unsigned int tp_sec;
     unsigned int tp_usec;
-    h.raw = pcap_get_ring_frame(handle, TP_STATUS_USER);
+    h.raw = get_ring_frame(handle, TP_STATUS_USER);
     if (!h.raw)
       break;
 
@@ -497,7 +480,6 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
       tp_sec     = h.h1->tp_sec;
       tp_usec    = h.h1->tp_usec;
       break;
-#ifdef HAVE_TPACKET2
     case TPACKET_V2:
       tp_len     = h.h2->tp_len;
       tp_mac     = h.h2->tp_mac;
@@ -505,14 +487,13 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
       tp_sec     = h.h2->tp_sec;
       tp_usec    = h.h2->tp_nsec / 1000;
       break;
-#endif
     default:
-      printf("unsupported tpacket version %d \n", handle->tp_version);
+      fprintf(stderr,"unsupported tpacket version %d \n", handle->tp_version);
       return -1;
     }
     // perform sanity check on internal offset. 
     if (tp_mac + tp_snaplen > handle->bufsize) {
-      printf("corrupted frame on kernel ring mac " "offset %d + caplen %d > frame len %d", tp_mac, tp_snaplen, handle->bufsize);
+      fprintf(stderr,"corrupted frame on kernel ring mac " "offset %d + caplen %d > frame len %d\n", tp_mac, tp_snaplen, handle->bufsize);
       return -1;
     }
 
@@ -523,35 +504,32 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
 
     bp = (unsigned char*)h.raw + tp_mac;
 #if 0
-    run_bpf = (!handle->use_bpf) ||
-      ((handle->use_bpf>1) && handle->use_bpf--);
-    if (run_bpf && handle->fcode.bf_insns &&
-	(bpf_filter(handle->fcode.bf_insns, bp,tp_len, tp_snaplen) == 0))
+    run_bpf = (!handle->use_bpf) ||   ((handle->use_bpf>1) && handle->use_bpf--);
+    if (run_bpf && handle->fcode.bf_insns &&(bpf_filter(handle->fcode.bf_insns, bp,tp_len, tp_snaplen) == 0))
       goto skip;
 #endif 
-    // Do checks based on packet direction.
-     
+    // Do checks based on packet direction.     
     sll = (void *)h.raw + TPACKET_ALIGN(handle->tp_hdrlen);
     if (sll->sll_pkttype == PACKET_OUTGOING) {
-      
       // Outgoing packet. If this is from the loopback device, reject it; we'll see the packet as an incoming packet as well,
       // and we don't want to see it twice.
-       
-      if (sll->sll_ifindex == handle->lo_ifindex)
-	goto skip;      
+			printf("OUTGOIN\n");
+      if (sll->sll_ifindex == handle->lo_ifindex){
+				goto skip;      
+			}
       // If the user only wants incoming packets, reject it.
-       
-      if (handle->direction == PCAP_D_IN)
-	goto skip;
+      if (handle->direction == PCAP_D_IN){
+				printf("in packets \n");
+				goto skip;
+			}
     } else {
       //Incoming packet. If the user only wants outgoing packets, reject it.
-       
-      if (handle->direction == PCAP_D_OUT)
-	goto skip;
+      if (handle->direction == PCAP_D_OUT){
+				printf("out packets \n");
+				goto skip;
+			}
     }
-
     // get required packet info from ring header
-
     pkt_hdr.ts.tv_sec = tp_sec;
     pkt_hdr.ts.tv_usec = tp_usec;
     pkt_hdr.caplen = tp_snaplen;
@@ -560,20 +538,14 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
 #if 0
     // if required build in place the sll header
     if (handle->md.cooked) {
-      struct sll_header *hdrp;
-      
+      struct sll_header *hdrp;      
       // The kernel should have left us with enough space for an sll header; back up the packet
-      // data pointer into that space, as that'll be the beginning of the packet we pass to the callback.
-       
-      bp -= SLL_HDR_LEN;
-      
+      // data pointer into that space, as that'll be the beginning of the packet we pass to the callback.       
+      bp -= SLL_HDR_LEN;      
       // Let's make sure that's past the end of the tpacket header, i.e. >= ((u_char *)thdr + TPACKET_HDRLEN),
-      // so we don't step on the header when we construct the sll header.
-       
-      if (bp < (u_char *)h.raw +
-	  TPACKET_ALIGN(handle->tp_hdrlen) +
-	  sizeof(struct sockaddr_ll)) {
-	printf("cooked-mode frame doesn't have room for sll header");
+      // so we don't step on the header when we construct the sll header.       
+      if (bp < (u_char *)h.raw +  TPACKET_ALIGN(handle->tp_hdrlen) +  sizeof(struct sockaddr_ll)) {
+	fprintf(stderr,"cooked-mode frame doesn't have room for sll header");
 	return -1;
       }
 
@@ -591,24 +563,18 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
       pcaphdr.len += SLL_HDR_LEN;
     }
 #endif 		
-
-#if 0
-  def HAVE_TPACKET2
-    if (handle->md.tp_version == TPACKET_V2 && h.h2->tp_vlan_tci &&
-	tp_snaplen >= 2 * ETH_ALEN) {
+    // no need for vlan stuff ! 
+    if (handle->tp_version == TPACKET_V2 && h.h2->tp_vlan_tci &&	tp_snaplen >= 2 * ETH_ALEN) {
       struct vlan_tag *tag;
-
       bp -= VLAN_TAG_LEN;
       memmove(bp, bp + VLAN_TAG_LEN, 2 * ETH_ALEN);
-
       tag = (struct vlan_tag *)(bp + 2 * ETH_ALEN);
       tag->vlan_tpid = htons(ETH_P_8021Q);
       tag->vlan_tci = htons(h.h2->tp_vlan_tci);
-
-      pcaphdr.caplen += VLAN_TAG_LEN;
-      pcaphdr.len += VLAN_TAG_LEN;
+      pkt_hdr.caplen += VLAN_TAG_LEN;
+      pkt_hdr.len += VLAN_TAG_LEN;
     }
-#endif
+
     
      //The only way to tell the kernel to cut off the packet at a snapshot length is with a filter program;
      // if there's no filter program, the kernel won't cut the packet off.     
@@ -616,30 +582,23 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
      
     if (pkt_hdr.caplen > handle->snapshot)
       pkt_hdr.caplen = handle->snapshot;
-
     // pass the packet to the user 
     pkts++;
-    callback(user, &pkt_hdr, bp);
-
-
+    callback(interface, &pkt_hdr, bp);
     handle->packets_read++;
-
   skip:
     // next packet 
     switch (handle->tp_version) {
     case TPACKET_V1:
       h.h1->tp_status = TP_STATUS_KERNEL;
       break;
-#ifdef HAVE_TPACKET2
     case TPACKET_V2:
       h.h2->tp_status = TP_STATUS_KERNEL;
       break;
-#endif
     }
     if (++handle->offset >= handle->cc)
       handle->offset = 0;
-
-    /* check for break loop condition*/
+    // check for break loop condition
     if (handle->break_loop) {
       handle->break_loop = 0;
       return -1;
@@ -648,5 +607,32 @@ int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handl
   return pkts;
 }
 
-#endif
+
+
+static int iface_get_id(int fd, const char *device)
+{   
+   struct ifreq    ifr;					    
+   memset(&ifr, 0, sizeof(ifr));
+   strncpy(ifr.ifr_name, device, sizeof(ifr.ifr_name));
+									    
+   if (ioctl(fd, SIOCGIFINDEX, &ifr) == -1) {
+   perror("SIOCGIFINDEX");
+	   return -1;
+	 } 
+   return ifr.ifr_ifindex;
+}
+
+
+static int setnonblock_mmap(in_info * handle )
+{
+   // map each value to the corresponding 2's complement, to  preserve the timeout value provided with pcap_set_timeout 
+    if (handle->timeout >= 0) {      
+      //  Timeout is non-negative, so we're not already  in non-blocking mode; set it to the 2's
+      //  complement, to make it negative, as an indication that we're in non-blocking mode.       
+      handle->timeout = handle->timeout*-1 - 1;
+    }
+  
+  return 0;
+}
+
 

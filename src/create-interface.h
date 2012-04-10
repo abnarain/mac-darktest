@@ -18,6 +18,16 @@ union thdr {
   void                    *raw;
 };
 
+
+struct vlan_tag {
+	 u_int16_t       vlan_tpid;              /* ETH_P_8021Q */
+	 u_int16_t       vlan_tci;               /* VLAN TCI */
+};
+
+#define VLAN_TAG_LEN    4
+
+
+
 // start of mmap 
 typedef struct  {
   uchar* oneshot_buffer ; /*buffer for copy of packet */
@@ -40,8 +50,8 @@ typedef struct  {
 } in_info  ;
 extern in_info handle[2];
 
-typedef void (*pcap_handler)(uchar *, const pkthdr *, const uchar *);
-int pcap_read_linux_mmap(int in_fd, in_info *handle, int max_packets, pcap_handler callback, uchar *user);
+typedef void (*callback_handler)(int, const pkthdr *, const uchar *);
+int read_mmap(int in_fd, in_info *handle, int max_packets, callback_handler callback, int interface);
 int activate_mmap(int in_fd, in_info* handle );
 
 int checkup(char* device) ;

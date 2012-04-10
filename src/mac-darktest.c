@@ -44,7 +44,6 @@ int j_hdr(struct jigdump_hdr *jh , int in_idx, struct rcv_pkt * paket){
   paket->rssi=jh->rssi_;
   paket-> antenna= jh->antenna_;
   paket-> freq = jh->freq_ ;
-  printf("version %d \n",jh->version_ );
   //TODO: What to do with all these flags ? save or discard ?  RX_FLAG_SHORT_GI, RX_FLAG_HT RX_FLAG_40MHZ 
   if(!jh->rate_ || (jh->flags_ & RX_FLAG_HT )){
       paket->rate=  (.5 * ieee80211_htrates[(jh->rate_idx_) & 0xf]);    	
@@ -54,6 +53,10 @@ int j_hdr(struct jigdump_hdr *jh , int in_idx, struct rcv_pkt * paket){
   if(jh->flags_ & RX_FLAG_SHORTPRE ){	
     paket->short_preamble_err=1;
   }
+//	printf("interface index=%d   antenna=%d \n", in_idx, jh->antenna_ );
+	if(in_idx==0){
+				exit(1);
+	}
   if(in_idx ==0){
     paket->ath_phy_err= jh->phyerr_ - prev_phy_err_0;
     prev_phy_err_0 =jh->phyerr_ ;
@@ -130,9 +133,6 @@ int update_pkt(struct jigdump_hdr* jh, int pkt_len, int in_idx, struct rcv_pkt *
     query_kernel();
   }
   
-  //  if(rand()/RAND_MAX <0.1 ){
-    goto proc_mask; 
-    //  }
   //  struct  ieee80211_hdr* f = (struct ieee80211_hdr*)(jh+1) ;
   //  u_int16_t fc = EXTRACT_LE_16BITS(&f->frame_control);
   p = (uchar*) ((uchar*) jh+sizeof(struct jigdump_hdr));
@@ -464,7 +464,6 @@ int update_pkt(struct jigdump_hdr* jh, int pkt_len, int in_idx, struct rcv_pkt *
       address_none_table_lookup(&none_address_table,paket);
       }
   }
- proc_mask: 
     if (sigprocmask(SIG_UNBLOCK, &block_set, NULL) < 0) {
       perror("sigprocmask");
       exit(1);
@@ -472,6 +471,7 @@ int update_pkt(struct jigdump_hdr* jh, int pkt_len, int in_idx, struct rcv_pkt *
     return 1;  
 }
 
+#ifdef NON_PACKET_MMAP 
 int create_header(uchar *jb, const int jb_len, int in_fd, int in_idx ){
   uchar* b=NULL;
   for(b = jb; b < jb+ jb_len; ) {
@@ -555,6 +555,7 @@ int capture_(int in_fd, int in_idx)
   // printf("in capture\n");
   return 1;
 }
+#endif 
 
 void set_next_alarm() {
   alarm(UPDATE_PERIOD_SECS);
@@ -610,8 +611,8 @@ void process_pkt(uchar* nothing ,const pkthdr * p_h, const uchar* jb){
       return ;
     }
     struct rcv_pkt paket ;
-        memset(&paket,0, sizeof(struct rcv_pkt));
-        update_pkt(jh, jb_len, 1, &paket);
+    memset(&paket,0, sizeof(struct rcv_pkt));
+    update_pkt(jh, jb_len, 1, &paket);
   }
 
 }
@@ -655,7 +656,10 @@ int main(int argc, char* argv[])
   printf("main : we are in main second time \n");
   fd_set fd_wait; 
   printf("in main\n");
-
+	if(in_fd_1 == -1 || in_fd_0 == -1){
+		fprintf(stderr,"Can't set the interfaces with required parameters. Exit\n");
+		exit(-1);
+	}
   struct timeval st;
   for(;;)
     {
@@ -673,14 +677,20 @@ int main(int argc, char* argv[])
 	  break;
 	default:
 	  if( FD_ISSET(in_fd_0, &fd_wait)) {
-//			printf("I am in 0\n");
-			pcap_read_linux_mmap(in_fd_0, &handle[0], -1, process_pkt, NULL);
-//	    capture_(in_fd_0,0);
+	//		printf("I am in 0\n");
+#ifdef NON_PACKET_MMAP
+	    capture_(in_fd_0,0);
+#else 
+			read_mmap(in_fd_0, &handle[0], -1, process_pkt, 0);
+#endif 
 	  }
 	  if( FD_ISSET(in_fd_1, &fd_wait)) {
-	//		printf("I am in 1\n");
-			pcap_read_linux_mmap(in_fd_1, &handle[0], -1, process_pkt , NULL);
-//	    capture_(in_fd_1,1);
+//			printf("I am in 1\n");
+#ifdef NON_PACKET_MMAP
+	    capture_(in_fd_1,1);
+#else
+			read_mmap(in_fd_1, &handle[0], -1, process_pkt , 1);
+#endif
 	  }
 	}
       // comes here when select times out or when a packet is processed
