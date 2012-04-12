@@ -44,26 +44,26 @@ int j_hdr(struct jigdump_hdr *jh , int in_idx, struct rcv_pkt * paket){
   paket->rssi=jh->rssi_;
   paket-> antenna= jh->antenna_;
   paket-> freq = jh->freq_ ;
-  //TODO: What to do with all these flags ? save or discard ?  RX_FLAG_SHORT_GI, RX_FLAG_HT RX_FLAG_40MHZ 
+  //TODO: What to do with all these flags ? i
+	//save or discard ?  RX_FLAG_SHORT_GI, RX_FLAG_HT RX_FLAG_40MHZ 
   if(!jh->rate_ || (jh->flags_ & RX_FLAG_HT )){
-      paket->rate=  (.5 * ieee80211_htrates[(jh->rate_idx_) & 0xf]);    	
+      paket->rate=  jh->rate_idx_; //  (.5 * ieee80211_htrates[(jh->rate_idx_) & 0xf]);    	
   }else { 
 				
-    paket->rate =   (float)((.5 * ((jh->rate_) & 0x7f)));
+    paket->rate = jh->rate_; //  (float)((.5 * ((jh->rate_) & 0x7f)));
   }
   if(jh->flags_ & RX_FLAG_SHORTPRE ){	
     paket->short_preamble_err=1;
   }
-//	printf(" antenna=%u \nrssi=%d  \nchannel=%d  \nrate=%u \nrate_idx=%u \nflags=%d\n", jh->antenna_, jh->rssi_, jh->channel_, jh->rate_, jh->rate_idx_ , jh->flags_);
+//	printf(" antenna=%u \nrssi=%d  \nchannel=%d  \nrate=%u \n \
+rate_idx=%u \nflags=%d\n", jh->antenna_, jh->rssi_, jh->channel_, jh->rate_, jh->rate_idx_ , jh->flags_);
 	
   if(in_idx ==0){
     paket->ath_phy_err= jh->phyerr_ - prev_phy_err_0;
     prev_phy_err_0 =jh->phyerr_ ;
-//    printf("0 , in_idx=%d phyerr =%u %u  %u  \n", in_idx, jh->phyerr_,prev_phy_err_0,  paket->ath_phy_err);
   }else  {
     paket->ath_phy_err= jh->phyerr_ - prev_phy_err_1;
     prev_phy_err_1 =jh->phyerr_ ;    
-//    printf("1 , in phyerr = %u %u  %u  \n", in_idx, jh->phyerr_, prev_phy_err_1, paket->ath_phy_err);
   }
 
   if (jh->flags_ & (RX_FLAG_FAILED_FCS_CRC | RX_FLAG_FAILED_PLCP_CRC )) {
