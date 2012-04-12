@@ -48,15 +48,14 @@ int j_hdr(struct jigdump_hdr *jh , int in_idx, struct rcv_pkt * paket){
   if(!jh->rate_ || (jh->flags_ & RX_FLAG_HT )){
       paket->rate=  (.5 * ieee80211_htrates[(jh->rate_idx_) & 0xf]);    	
   }else { 
+				
     paket->rate =   (float)((.5 * ((jh->rate_) & 0x7f)));
   }
   if(jh->flags_ & RX_FLAG_SHORTPRE ){	
     paket->short_preamble_err=1;
   }
-//	printf("interface index=%d   antenna=%d \n", in_idx, jh->antenna_ );
-	if(in_idx==0){
-				exit(1);
-	}
+//	printf(" antenna=%u \nrssi=%d  \nchannel=%d  \nrate=%u \nrate_idx=%u \nflags=%d\n", jh->antenna_, jh->rssi_, jh->channel_, jh->rate_, jh->rate_idx_ , jh->flags_);
+	
   if(in_idx ==0){
     paket->ath_phy_err= jh->phyerr_ - prev_phy_err_0;
     prev_phy_err_0 =jh->phyerr_ ;
@@ -132,7 +131,6 @@ int update_pkt(struct jigdump_hdr* jh, int pkt_len, int in_idx, struct rcv_pkt *
   if(c%800==0){
     query_kernel();
   }
-  
   //  struct  ieee80211_hdr* f = (struct ieee80211_hdr*)(jh+1) ;
   //  u_int16_t fc = EXTRACT_LE_16BITS(&f->frame_control);
   p = (uchar*) ((uchar*) jh+sizeof(struct jigdump_hdr));
@@ -489,7 +487,6 @@ int create_header(uchar *jb, const int jb_len, int in_fd, int in_idx ){
     b += sizeof(*jh) + jh->snaplen_ ;
     if (b > jb + jb_len) {
       syslog(LOG_ERR,"data is mis-aligned %d:%d, caplen=%d discard block\n", (int)(b-jb), jb_len, jh->snaplen_);
-      
       return 0;
     }
     struct rcv_pkt paket ;
@@ -500,7 +497,6 @@ int create_header(uchar *jb, const int jb_len, int in_fd, int in_idx ){
 }
 
 int rcv_timeo=-1;
-
 int read_raw_socket( uchar*jb, int *jb_len, int in_fd){
   const int jb_sz = *jb_len;  
   int timeout,rcv_bytes=0;
@@ -550,9 +546,9 @@ int capture_(int in_fd, int in_idx)
     perror("read_raw_socket failed \n");
   }
   if(pkt_count[in_idx]%50 == 0){     
-    k_pkt_stats(in_fd);
+    k_pkt_stats();
   }
-  // printf("in capture\n");
+ //  printf("in capture\n");
   return 1;
 }
 #endif 
@@ -564,6 +560,9 @@ void set_next_alarm() {
 void handle_signals(int sig) {
   if (sig == SIGINT || sig == SIGTERM) {
     write_update();
+#ifndef NON_PACKET_MMAP
+	  clean_interfaces();
+#endif		
     exit(0);
   } else if (sig == SIGALRM) {
     write_update();
@@ -588,7 +587,10 @@ void initialize_signal_handler() {
   sigaddset(&block_set, SIGALRM);
 }
 
-void process_pkt(uchar* nothing ,const pkthdr * p_h, const uchar* jb){
+#ifndef NON_PACKET_MMAP
+
+static int rcv_pkt_n =0;
+void pkt_capture(int interface ,const pkthdr * p_h, const uchar* jb){
 
   uchar* b=NULL;
   int jb_len = p_h->caplen;
@@ -612,10 +614,14 @@ void process_pkt(uchar* nothing ,const pkthdr * p_h, const uchar* jb){
     }
     struct rcv_pkt paket ;
     memset(&paket,0, sizeof(struct rcv_pkt));
-    update_pkt(jh, jb_len, 1, &paket);
+    update_pkt(jh, jb_len, interface, &paket);
   }
+	rcv_pkt_n++;
+	if(rcv_pkt_n%100==0)
+		 k_pkt_stats();
 
 }
+#endif 
 
 int main(int argc, char* argv[])
 {
@@ -624,12 +630,14 @@ int main(int argc, char* argv[])
     exit(1);
   }
   initialize_bismark_id();
-  srand ( time(NULL) );
-  /* if( anonymization_init()){
-     perror("Error initializing anonymizer\n");
-     return 1; 
-     }
-  */
+#ifdef ANONYMIZATION
+	printf("ANONYMIZATION ON \n");
+  if( anonymization_init()){
+    perror("Error initializing anonymizer\n");
+    return 1; 
+  }
+#endif
+	  
   address_data_table_init(&data_address_table);
   address_data_table_init(&data_address_table_err);
   address_mgmt_table_init(&mgmt_address_table);
@@ -649,17 +657,14 @@ int main(int argc, char* argv[])
   char  *device0= argv[1];
   char  *device1= argv[2];
   int retval;
-  int in_fd_0= checkup(device0);
-  
-  printf("main : we are in main for the first time \n");
+  int in_fd_0= checkup(device0); 
   int in_fd_1= checkup(device1);
-  printf("main : we are in main second time \n");
   fd_set fd_wait; 
   printf("in main\n");
-	if(in_fd_1 == -1 || in_fd_0 == -1){
-		fprintf(stderr,"Can't set the interfaces with required parameters. Exit\n");
-		exit(-1);
-	}
+  if(in_fd_1 == -1 || in_fd_0 == -1){
+    fprintf(stderr,"Can't set the interfaces with required parameters. Exit\n");
+    exit(-1);
+  }
   struct timeval st;
   for(;;)
     {
@@ -677,24 +682,23 @@ int main(int argc, char* argv[])
 	  break;
 	default:
 	  if( FD_ISSET(in_fd_0, &fd_wait)) {
-	//		printf("I am in 0\n");
+//	    printf("I am in 0\n");
 #ifdef NON_PACKET_MMAP
 	    capture_(in_fd_0,0);
 #else 
-			read_mmap(in_fd_0, &handle[0], -1, process_pkt, 0);
+	    read_mmap( &handle[0], pkt_capture, 0);
 #endif 
 	  }
 	  if( FD_ISSET(in_fd_1, &fd_wait)) {
-//			printf("I am in 1\n");
+//	    printf("I am in 1\n");
 #ifdef NON_PACKET_MMAP
 	    capture_(in_fd_1,1);
-#else
-			read_mmap(in_fd_1, &handle[0], -1, process_pkt , 1);
+#else			
+	    read_mmap( &handle[1], pkt_capture , 1);
 #endif
 	  }
 	}
       // comes here when select times out or when a packet is processed
-
     }
   return 0 ;
 }

@@ -32,6 +32,7 @@ typedef struct {
   float rssi_sum;
   float rssi_lin_sum;
   float rate;
+	int rt_index[256];
   u_int16_t freq ;
   u_int8_t antenna;
   u_int32_t ath_crc_err_count;

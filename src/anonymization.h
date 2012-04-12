@@ -8,6 +8,7 @@
 
 #define ANONYMIZATION_DIGEST_LENGTH SHA_DIGEST_LENGTH
 
+#define ANONYMIZATION
 /* Must call exactly once per process, before any anonymization is performed. */
 int anonymization_init();
 /* Anonymize the lower 24 bits of a MAC address into the provided buffer. The

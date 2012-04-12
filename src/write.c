@@ -48,7 +48,7 @@ int initialize_bismark_id() {
 }
 
 int write_update(){
-printf("write update \n");
+
 
   gzFile client_handle = gzopen (PENDING_UPDATE_CLIENT_FILENAME, "wb");
   gzFile mgmt_handle = gzopen (PENDING_UPDATE_MGMT_FILENAME, "wb");
@@ -97,7 +97,6 @@ printf("write update \n");
   }
 
   /*done with control update */
-
 
   if (!data_handle) {
     perror("Could not open update data file for writing\n");
@@ -160,7 +159,7 @@ printf("write update \n");
   }
   /*done with none packets*/
 
-/*
+#ifdef ANONYMIZATION
     gzFile handle_digest = gzopen (PENDING_UPDATE_FILENAME_DIGEST, "wb");
     if (!handle_digest) {
     perror("Could not open update file for writing\n");
@@ -169,10 +168,10 @@ printf("write update \n");
     if (anonymization_write_update(handle_digest)) {
     perror("Could not write anonymization update");
     exit(1);
-    }
-    
+    }    
     gzclose(handle_digest);
-*/
+#endif
+
   ++sequence_number;
   address_control_table_init(&control_address_table);
   address_data_table_init(&data_address_table);
@@ -592,8 +591,10 @@ int address_data_table_write_update(data_address_table_t* table,data_address_tab
   printf("----------------DATA PACKETS------- \n"); 
   for (idx = table->added_since_last_update; idx > 0; --idx) {
     int mac_id = NORM(table->last - idx + 1);
+#ifndef ANONYMIZATION
     u_int8_t *a=table->entries[mac_id].mac_address;
     u_int8_t *ab=table->entries[mac_id].dest_mac_address;
+#endif
 #ifdef DEBUG_CORRECT
     printf("%02x:%02x:%02x:%02x:%02x:%02x\n",a[0],a[1],a[2],a[3],a[4],a[5]);
     printf("%02x:%02x:%02x:%02x:%02x:%02x\n",ab[0],ab[1],ab[2],ab[3],ab[4],ab[5]);
@@ -625,14 +626,38 @@ int address_data_table_write_update(data_address_table_t* table,data_address_tab
 	   table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets)
 	   );
 #endif 
+
+#ifdef ANONYMIZATION    
+    uint8_t digest_mac[ETH_ALEN];
+    uint8_t digest_mac_dest[ETH_ALEN];
+    if(anonymize_mac(table->entries[mac_id].mac_address, digest_mac)) {
+      fprintf(stderr, "Error anonymizing MAC mapping\n");
+      return -1;
+    }
+    if(anonymize_mac(table->entries[mac_id].dest_mac_address, digest_mac_dest)) {
+      fprintf(stderr, "Error anonymizing MAC mapping\n");
+      return -1;
+    }
+    u_int8_t *a=digest_mac; 
+    u_int8_t *ab=digest_mac_dest;
     if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
-      perror("error writing src mac in the zip file ");
+      perror("error writing the client mac address in zip file ");
       exit(1);
     }
     if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",ab[0],ab[1],ab[2],ab[3],ab[4],ab[5])){
       perror("error writing dest mac in the zip file ");
       exit(1);
     }
+#else
+    if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
+      perror("error writing the client mac address in zip file ");
+      exit(1);
+    }
+    if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",ab[0],ab[1],ab[2],ab[3],ab[4],ab[5])){
+      perror("error writing dest mac in the zip file ");
+      exit(1);
+    }
+#endif
     if(!gzprintf(handle,"%u|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u",
 		 table->entries[mac_id].total_packets,
 		 table->entries[mac_id].antenna,
@@ -675,8 +700,10 @@ if(!gzprintf(handle,"-|-|-\n")){
 
   for (idx = table_err->added_since_last_update; idx > 0; --idx) {
     int mac_id = NORM(table_err->last - idx + 1);
+#ifndef ANONYMIZATION
     u_int8_t *a=table_err->entries[mac_id].mac_address;
     u_int8_t *ab=table_err->entries[mac_id].dest_mac_address;
+#endif
 #ifdef DEBUG_INCORRECT
     printf("%02x:%02x:%02x:%02x:%02x:%02x\n",a[0],a[1],a[2],a[3],a[4],a[5]);
     printf("%02x:%02x:%02x:%02x:%02x:%02x\n",ab[0],ab[1],ab[2],ab[3],ab[4],ab[5]);
@@ -710,14 +737,40 @@ if(!gzprintf(handle,"-|-|-\n")){
 	   );
 #endif 
 
+
+
+#ifdef ANONYMIZATION    
+    uint8_t digest_mac[ETH_ALEN];
+    uint8_t digest_mac_dest[ETH_ALEN];
+    if(anonymize_mac(table->entries[mac_id].mac_address, digest_mac)) {
+      fprintf(stderr, "Error anonymizing MAC mapping\n");
+      return -1;
+    }
+    if(anonymize_mac(table->entries[mac_id].dest_mac_address, digest_mac_dest)) {
+      fprintf(stderr, "Error anonymizing MAC mapping\n");
+      return -1;
+    }
+    u_int8_t *a=digest_mac; 
+    u_int8_t *ab=digest_mac_dest;
     if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
-      perror("error writing src mac in the zip file ");
+      perror("error writing the client mac address in zip file ");
       exit(1);
     }
     if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",ab[0],ab[1],ab[2],ab[3],ab[4],ab[5])){
       perror("error writing dest mac in the zip file ");
       exit(1);
     }
+#else
+    if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
+      perror("error writing the client mac address in zip file ");
+      exit(1);
+    }
+    if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",ab[0],ab[1],ab[2],ab[3],ab[4],ab[5])){
+      perror("error writing dest mac in the zip file ");
+      exit(1);
+    }
+#endif
+
     if(!gzprintf(handle,"%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f\n",
 		 table_err->entries[mac_id].total_packets,
 		 table_err->entries[mac_id].antenna,
@@ -743,7 +796,9 @@ int address_control_table_write_update(control_address_table_t* table,control_ad
   int idx;
   for (idx = table->added_since_last_update; idx > 0; --idx) {
     int mac_id = NORM(table->last - idx + 1);
+#ifndef ANONYMIZATION
     u_int8_t *a=table->entries[mac_id].mac_address;
+#endif 
 #ifdef DEBUG_CORRECT    
     printf("%02x:%02x:%02x:%02x:%02x:%02x\n",a[0],a[1],a[2],a[3],a[4],a[5]);
     printf("pkt|anten|freq|ath_crc|ath_phy|channel|short_preamble|phy_wep|retry|more_flag|more_data|strictly_ordered|pwr_mgmt|rate\n");
@@ -771,10 +826,24 @@ int address_control_table_write_update(control_address_table_t* table,control_ad
 	   table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets)
 	   );
 #endif
+
+#ifdef ANONYMIZATION    
+    uint8_t digest_mac[ETH_ALEN];
+    if(anonymize_mac(table->entries[mac_id].mac_address, digest_mac)) {
+      fprintf(stderr, "Error anonymizing MAC mapping\n");
+      return -1;
+    }
+    u_int8_t *a=digest_mac;
     if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
-      perror("error writing the zip file ");
+      perror("error writing the client mac address in zip file ");
       exit(1);
     }
+#else
+    if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
+      perror("error writing the client mac address in zip file ");
+      exit(1);
+    }
+#endif
     if(!gzprintf(handle,"%u|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u",
 		 table->entries[mac_id].total_packets,
 		 table->entries[mac_id].antenna,
@@ -813,7 +882,9 @@ if(!gzprintf(handle,"-|-|-\n")){
   
   for (idx = table_err->added_since_last_update; idx > 0; --idx) {
     int mac_id = NORM(table_err->last - idx + 1);
+#ifndef ANONYMIZATION
     u_int8_t *a=table_err->entries[mac_id].mac_address;
+#endif 
 #ifdef DEBUG_INCORRECT    
     printf("%02x:%02x:%02x:%02x:%02x:%02x\n",a[0],a[1],a[2],a[3],a[4],a[5]);
     printf("pkt|anten|freq|ath_crc|ath_phy|channel|short_preamble|phy_wep|retry|more_flag|more_data|strictly_ordered|pwr_mgmt|\n");
@@ -841,10 +912,25 @@ if(!gzprintf(handle,"-|-|-\n")){
 	   table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets)
 	   );
 #endif
+
+#ifdef ANONYMIZATION    
+    uint8_t digest_mac[ETH_ALEN];
+    if(anonymize_mac(table->entries[mac_id].mac_address, digest_mac)) {
+      fprintf(stderr, "Error anonymizing MAC mapping\n");
+      return -1;
+    }
+    u_int8_t *a=digest_mac;
     if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
-      perror("error writing the zip file ");
+      perror("error writing the client mac address in zip file ");
       exit(1);
     }
+#else
+    if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
+      perror("error writing the client mac address in zip file ");
+      exit(1);
+    }
+#endif
+
     if(!gzprintf(handle,"%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f\n",
 		 table_err->entries[mac_id].total_packets,
 		 table_err->entries[mac_id].antenna,
@@ -872,8 +958,9 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
   for (idx = table->added_since_last_update; idx > 0; --idx) {
 
     int mac_id = NORM(table->last - idx + 1);
+#ifndef ANONYMIZATION
     u_int8_t *a=table->entries[mac_id].mac_address;
-    
+#endif    
 #ifdef DEBUG_CORRECT
     printf("%02x:%02x:%02x:%02x:%02x:%02x\n",a[0],a[1],a[2],a[3],a[4],a[5]);
     printf("pkt|anten|freq|ath_crc|ath_phy|channel|short_preamble|phy_wep|retry|more_flag|more_data|strictly_ordered|pwr_mgmt\n");
@@ -904,10 +991,25 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
 	   table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets)
 	   );
 #endif
+
+#ifdef ANONYMIZATION    
+    uint8_t digest_mac[ETH_ALEN];
+    if(anonymize_mac(table->entries[mac_id].mac_address, digest_mac)) {
+      fprintf(stderr, "Error anonymizing MAC mapping\n");
+      return -1;
+    }
+    u_int8_t *a=digest_mac;
     if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
-      perror("error writing the zip file ");
+      perror("error writing the client mac address in zip file ");
       exit(1);
     }
+#else
+    if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
+      perror("error writing the client mac address in zip file ");
+      exit(1);
+    }
+#endif
+
     if(!gzprintf(handle,"%s|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u|%u",
 		 table->entries[mac_id].essid,
 		 table->entries[mac_id].total_packets,
@@ -949,10 +1051,10 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
   }
 
   for (idx = table_err->added_since_last_update; idx > 0; --idx) {
-
     int mac_id = NORM(table_err->last - idx + 1);
+#ifndef ANONYMIZATION
     u_int8_t *a=table_err->entries[mac_id].mac_address;
-    
+#endif    
 #ifdef DEBUG_INCORRECT
     printf("%02x:%02x:%02x:%02x:%02x:%02x\n",a[0],a[1],a[2],a[3],a[4],a[5]);
     printf("pkt|anten|freq|ath_crc|ath_phy|channel|short_preamble|phy_wep|retry|more_flag|more_data|strictly_ordered|pwr_mgmt\n");
@@ -983,10 +1085,24 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
 	   table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets)
 	   );
 #endif
+
+#ifdef ANONYMIZATION    
+    uint8_t digest_mac[ETH_ALEN];
+    if(anonymize_mac(table->entries[mac_id].mac_address, digest_mac)) {
+      fprintf(stderr, "Error anonymizing MAC mapping\n");
+      return -1;
+    }
+    u_int8_t *a=digest_mac;
     if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
-      perror("error writing the zip file ");
+      perror("error writing the client mac address in zip file ");
       exit(1);
     }
+#else
+    if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
+      perror("error writing the client mac address in zip file ");
+      exit(1);
+    }
+#endif
     if(!gzprintf(handle,"%s|%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f\n",
 		 table_err->entries[mac_id].essid,
 		 table_err->entries[mac_id].total_packets,
@@ -1006,7 +1122,6 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
 
   return 1; 
 }
-
 
 int address_none_table_lookup(none_address_table_t*  table,struct rcv_pkt * paket) {
   u_int8_t m_address[sizeof(paket->mac_address)];
@@ -1186,46 +1301,61 @@ int address_client_table_lookup(client_address_table_t*  table, u_int32_t c_tx_f
 }
 
 int address_client_table_write_update(gzFile handle, client_address_table_t* table) {
-  printf("writing the update in the file \n");
   int idx;
    printf("---------------CLIENT INFO ------- \n"); 
   for (idx = table->added_since_last_update; idx > 0; --idx) {
 		
     int mac_id = NORM(table->last - idx + 1);
+#ifdef DEBUG_CORRECT
+#ifndef ANONYMIZATION
     u_int8_t *a=table->entries[mac_id].mac_address;
     printf("%02x:%02x:%02x:%02x:%02x:%02x|",a[0],a[1],a[2],a[3],a[4],a[5]);
+#endif
     printf("%u|%u|%u|%u|%u|%d.%d|%d.%d\n",
 	   table->entries[mac_id].tx_pkts,
 	   table->entries[mac_id].tx_retries,
 	   table->entries[mac_id].tx_failed,
 	   table->entries[mac_id].rx_pkts,
-		 table->entries[mac_id].dev,
+	   table->entries[mac_id].dev,
 	   table->entries[mac_id].rx_bitrate /10 ,
 	   (table->entries[mac_id].rx_bitrate %10),
 	   table->entries[mac_id].tx_bitrate /10,
 	   (table->entries[mac_id].tx_bitrate %10)
 	   );
-    
-    
+#endif
+
+#ifdef ANONYMIZATION    
+    uint8_t digest_mac[ETH_ALEN];
+    if(anonymize_mac(table->entries[mac_id].mac_address, digest_mac)) {
+      fprintf(stderr, "Error anonymizing MAC mapping\n");
+      return -1;
+    }
+    u_int8_t *a=digest_mac; 
     if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
       perror("error writing the client mac address in zip file ");
       exit(1);
     }
+#else
+    if(!gzprintf(handle,"%02x%02x%02x%02x%02x%02x|",a[0],a[1],a[2],a[3],a[4],a[5])){
+      perror("error writing the client mac address in zip file ");
+      exit(1);
+    }
+#endif
     if(!gzprintf(handle,"%u|%u|%u|%u|%u|%d.%d|%d.%d\n",				 
-	      table->entries[mac_id].tx_pkts,
-	      table->entries[mac_id].tx_retries,
-	      table->entries[mac_id].tx_failed,
-	   table->entries[mac_id].rx_pkts,
+		 table->entries[mac_id].tx_pkts,
+		 table->entries[mac_id].tx_retries,
+		 table->entries[mac_id].tx_failed,
+		 table->entries[mac_id].rx_pkts,
 		 table->entries[mac_id].dev,
-	   table->entries[mac_id].rx_bitrate /10 ,
-	   (table->entries[mac_id].rx_bitrate %10),
-	   table->entries[mac_id].tx_bitrate /10,
-	   (table->entries[mac_id].tx_bitrate %10)
-		)){
+		 table->entries[mac_id].rx_bitrate /10 ,
+		 (table->entries[mac_id].rx_bitrate %10),
+		 table->entries[mac_id].tx_bitrate /10,
+		 (table->entries[mac_id].tx_bitrate %10)
+		 )){
         perror("error writing the client information in  zip file ");
         exit(1);								
-		};
+    };
   }
-	   return 1; 
+  return 1; 
 }
 
