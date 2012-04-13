@@ -223,10 +223,13 @@ int address_data_table_lookup(data_address_table_t*  table,struct rcv_pkt * pake
 	  !memcmp(table->entries[mac_id].mac_address, m_address, sizeof(m_address))){
 	table->entries[mac_id].total_packets++;
 	table->entries[mac_id].rssi_lin_sum= table->entries[mac_id].rssi_lin_sum + paket->rssi;
-	// TODO : add the antilog of it 
-	table->entries[mac_id].ath_phy_err_count=table->entries[mac_id].ath_phy_err_count+paket->ath_phy_err;
+	table->entries[mac_id].rssi_square_lin_sum= table->entries[mac_id].rssi_square_lin_sum + paket->rssi* paket->rssi;
+	// TODO : add the antilog values of RSSI ? ? no ! i don't think so. 
+		table->entries[mac_id].ath_phy_err_count=table->entries[mac_id].ath_phy_err_count+paket->ath_phy_err;
 	  table->entries[mac_id].freq =paket->freq ; 
-	  table->entries[mac_id].rate=paket->rate;
+
+	  ++table->entries[mac_id].rt_index[paket->rate];
+
 	  table->entries[mac_id].channel_rcv=paket->channel_rcv;	  
 	  table->entries[mac_id].antenna = paket->antenna;	  
 	if(paket->ath_crc_err ){
@@ -248,7 +251,6 @@ int address_data_table_lookup(data_address_table_t*  table,struct rcv_pkt * pake
 	    table->entries[mac_id].phy_wep_count++;
 	  if( paket->more_flag)
 	    table->entries[mac_id].more_flag_count++;
-	  
 	  
 	  if(paket->p.data_pkt.pkt_subtype == 0x8 || paket->p.data_pkt.pkt_subtype ==  IEEE80211_STYPE_DATA){ // data
 	    table->entries[mac_id].st_data_count++;
@@ -290,11 +292,12 @@ int address_data_table_lookup(data_address_table_t*  table,struct rcv_pkt * pake
   memcpy(table->entries[table->last].mac_address, paket->mac_address, sizeof(paket->mac_address));
   memcpy(table->entries[table->last].dest_mac_address, paket->p.data_pkt.dst, sizeof(paket->p.data_pkt.dst));
   table->entries[table->last].total_packets=  1;
+	table->entries[table->last].rssi_square_lin_sum = paket->rssi * paket->rssi;
   table->entries[table->last].rssi_lin_sum=  paket->rssi;
   
   table->entries[table->last].ath_phy_err_count=paket->ath_phy_err;   
     table->entries[table->last].freq =paket->freq ; 
-    table->entries[table->last].rate=paket->rate;
+    ++table->entries[table->last].rt_index[paket->rate];
     table->entries[table->last].channel_rcv=paket->channel_rcv ;
     table->entries[table->last].antenna = paket->antenna;	  
   if(paket->ath_crc_err){
@@ -354,6 +357,7 @@ int address_control_table_lookup(control_address_table_t*  table,struct rcv_pkt 
       if (!memcmp(table->entries[mac_id].mac_address, m_address, sizeof(m_address))){
 	table->entries[mac_id].total_packets++;
 	table->entries[mac_id].rssi_lin_sum= table->entries[mac_id].rssi_lin_sum + paket->rssi;
+	table->entries[mac_id].rssi_square_lin_sum= table->entries[mac_id].rssi_square_lin_sum + paket->rssi* paket->rssi;
 	  table->entries[mac_id].freq =paket->freq ; 
 	  table->entries[mac_id].rate=paket->rate;
 	  table->entries[mac_id].channel_rcv=paket->channel_rcv;	  
@@ -413,6 +417,7 @@ int address_control_table_lookup(control_address_table_t*  table,struct rcv_pkt 
   memcpy(table->entries[table->last].mac_address, paket->mac_address, sizeof(paket->mac_address));
   table->entries[table->last].total_packets= 1;
   table->entries[table->last].rssi_lin_sum=  paket->rssi;
+	table->entries[table->last].rssi_square_lin_sum = paket->rssi * paket->rssi;
   table->entries[table->last].ath_phy_err_count=paket->ath_phy_err;   
     table->entries[table->last].freq =paket->freq ; 
     table->entries[table->last].rate=paket->rate;
@@ -467,6 +472,7 @@ int address_mgmt_table_lookup(mgmt_address_table_t*  table,struct rcv_pkt * pake
       if (!memcmp(table->entries[mac_id].mac_address, m_address, sizeof(m_address))){
 	table->entries[mac_id].total_packets++;
 	table->entries[mac_id].rssi_lin_sum= table->entries[mac_id].rssi_lin_sum + paket->rssi;
+	table->entries[mac_id].rssi_square_lin_sum= table->entries[mac_id].rssi_square_lin_sum + paket->rssi* paket->rssi;
 	  table->entries[mac_id].freq =paket->freq ; 
 	  table->entries[mac_id].rate=paket->rate;
 	  table->entries[mac_id].channel_rcv=paket->channel_rcv;	  
@@ -531,6 +537,7 @@ int address_mgmt_table_lookup(mgmt_address_table_t*  table,struct rcv_pkt * pake
   
   memcpy(table->entries[table->last].mac_address, paket->mac_address, sizeof(paket->mac_address));
   table->entries[table->last].total_packets=  table->entries[table->last].total_packets+1;
+	table->entries[table->last].rssi_square_lin_sum = paket->rssi * paket->rssi;
   table->entries[table->last].rssi_lin_sum=  paket->rssi;
   
     table->entries[table->last].ath_phy_err_count=paket->ath_phy_err;   
@@ -591,6 +598,10 @@ int address_data_table_write_update(data_address_table_t* table,data_address_tab
   printf("----------------DATA PACKETS------- \n"); 
   for (idx = table->added_since_last_update; idx > 0; --idx) {
     int mac_id = NORM(table->last - idx + 1);
+
+	   float rssi_avg = table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets);
+		 float rssi_std_dev = (table->entries[mac_id].rssi_square_lin_sum/(float)table->entries[mac_id].total_packets)  - (rssi_avg*rssi_avg);
+
 #ifndef ANONYMIZATION
     u_int8_t *a=table->entries[mac_id].mac_address;
     u_int8_t *ab=table->entries[mac_id].dest_mac_address;
@@ -622,8 +633,8 @@ int address_data_table_write_update(data_address_table_t* table,data_address_tab
 	   table->entries[mac_id].udp_count,
 	   table->entries[mac_id].icmp_count,
 	   table->entries[mac_id].st_no_data_count,
-	   table->entries[mac_id].rate,
-	   table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets)
+	   rssi_avg,
+		 rssi_std_dev 
 	   );
 #endif 
 
@@ -676,7 +687,7 @@ int address_data_table_write_update(data_address_table_t* table,data_address_tab
       perror("error writing the phy data  zip file ");
       exit(1);
     }
-    if(!gzprintf(handle,"|%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f\n",
+    if(!gzprintf(handle,"|%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f",
 		 table->entries[table->last].st_data_count,
 		 table->entries[mac_id].arp_count,
 		 table->entries[mac_id].ip_count,
@@ -684,12 +695,31 @@ int address_data_table_write_update(data_address_table_t* table,data_address_tab
 		 table->entries[mac_id].udp_count,
 		 table->entries[mac_id].icmp_count,
 		 table->entries[mac_id].st_no_data_count,
-		 table->entries[mac_id].rate,
-		 table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets)
+		 rssi_avg,
+		 rssi_std_dev
 		 )){
       perror("error writing the mac data zip file ");
       exit(1);
     }
+		int rate_idx =0;
+		 // printf("total no : ",table->entries[mac_id].total_packets);
+		if(!gzprintf(handle,"|{")){			
+      perror("error writing the left bracket data zip file ");
+      exit(1);						
+		}
+		for(rate_idx=0;rate_idx <256; rate_idx++){
+			if(table->entries[mac_id].rt_index[rate_idx] !=0) {
+				if(!gzprintf(handle,"(%d,%d),",rate_idx, table->entries[mac_id].rt_index[rate_idx])){
+								
+		      perror("error writing the rates into zip file ");
+		      exit(1);						
+				}
+			}
+		}
+		if(!gzprintf(handle,"}\n")){
+      perror("error writing the right bracket into zip file ");
+      exit(1);						
+		}
   }
   /*written correct data, now write erroneous data */
 
@@ -700,6 +730,10 @@ if(!gzprintf(handle,"-|-|-\n")){
 
   for (idx = table_err->added_since_last_update; idx > 0; --idx) {
     int mac_id = NORM(table_err->last - idx + 1);
+
+	   float rssi_avg = table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets);
+		 float rssi_std_dev = (table_err->entries[mac_id].rssi_square_lin_sum/(float)table_err->entries[mac_id].total_packets)  - (rssi_avg*rssi_avg);
+
 #ifndef ANONYMIZATION
     u_int8_t *a=table_err->entries[mac_id].mac_address;
     u_int8_t *ab=table_err->entries[mac_id].dest_mac_address;
@@ -724,7 +758,7 @@ if(!gzprintf(handle,"-|-|-\n")){
 	   table_err->entries[mac_id].pwr_mgmt_count
 	   );
     printf("st_data|arp|ip|tcp|udp|icmp|st_no_data_|rate|rssi\n");
-    printf("%u|%u|%u|%u|%u|%u|%u|%2.1f\n",
+    printf("%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f\n",
 	   table_err->entries[table->last].st_data_count,
 	   table_err->entries[mac_id].arp_count,
 	   table_err->entries[mac_id].ip_count,
@@ -732,8 +766,8 @@ if(!gzprintf(handle,"-|-|-\n")){
 	   table_err->entries[mac_id].udp_count,
 	   table_err->entries[mac_id].icmp_count,
 	   table_err->entries[mac_id].st_no_data_count,
-	   table_err->entries[mac_id].rate,
-	   table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets)
+	   rssi_avg,
+		 rssi_std_dev
 	   );
 #endif 
 
@@ -742,11 +776,11 @@ if(!gzprintf(handle,"-|-|-\n")){
 #ifdef ANONYMIZATION    
     uint8_t digest_mac[ETH_ALEN];
     uint8_t digest_mac_dest[ETH_ALEN];
-    if(anonymize_mac(table->entries[mac_id].mac_address, digest_mac)) {
+    if(anonymize_mac(table_err->entries[mac_id].mac_address, digest_mac)) {
       fprintf(stderr, "Error anonymizing MAC mapping\n");
       return -1;
     }
-    if(anonymize_mac(table->entries[mac_id].dest_mac_address, digest_mac_dest)) {
+    if(anonymize_mac(table_err->entries[mac_id].dest_mac_address, digest_mac_dest)) {
       fprintf(stderr, "Error anonymizing MAC mapping\n");
       return -1;
     }
@@ -780,7 +814,8 @@ if(!gzprintf(handle,"-|-|-\n")){
 		 table_err->entries[mac_id].channel_rcv,
 		 table_err->entries[mac_id].short_preamble_count,
 		 table_err->entries[mac_id].rate,
-		 table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets)
+		 rssi_avg,
+		 rssi_std_dev
 		 )){
       perror("error writing the phy data  zip file ");
       exit(1);
@@ -796,6 +831,8 @@ int address_control_table_write_update(control_address_table_t* table,control_ad
   int idx;
   for (idx = table->added_since_last_update; idx > 0; --idx) {
     int mac_id = NORM(table->last - idx + 1);
+	   float rssi_avg = table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets);
+		 float rssi_std_dev = (table->entries[mac_id].rssi_square_lin_sum/(float)table->entries[mac_id].total_packets)  - (rssi_avg*rssi_avg);
 #ifndef ANONYMIZATION
     u_int8_t *a=table->entries[mac_id].mac_address;
 #endif 
@@ -818,12 +855,13 @@ int address_control_table_write_update(control_address_table_t* table,control_ad
 	   table->entries[mac_id].pwr_mgmt_count
 	   );
     printf("cts|rts|ack|rssi\n");
-    printf("%u|%u|%u|%2.1f|%2.1f\n",
+    printf("%u|%u|%u|%u|%2.1f|%2.1f\n",
 	   table->entries[mac_id].cts_count,
 	   table->entries[mac_id].rts_count,
 	   table->entries[mac_id].ack_count,
 	   table->entries[mac_id].rate,
-	   table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets)
+	   rssi_avg,
+		 rssi_std_dev
 	   );
 #endif
 
@@ -862,12 +900,13 @@ int address_control_table_write_update(control_address_table_t* table,control_ad
       perror("error writing the zip file ");
       exit(1);
     }
-    if(!gzprintf(handle,"|%u|%u|%u|%2.1f|%2.1f\n",
+    if(!gzprintf(handle,"|%u|%u|%u|%u|%2.1f|%2.1f\n",
 		 table->entries[mac_id].cts_count,
 		 table->entries[mac_id].rts_count,
 		 table->entries[mac_id].ack_count,
 		 table->entries[mac_id].rate,
-		 table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets)
+		 rssi_avg,
+		 rssi_std_dev
 		 )){
       perror("error writing the zip file");
       exit(1);
@@ -882,6 +921,8 @@ if(!gzprintf(handle,"-|-|-\n")){
   
   for (idx = table_err->added_since_last_update; idx > 0; --idx) {
     int mac_id = NORM(table_err->last - idx + 1);
+	   float rssi_avg = table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets);
+		 float rssi_std_dev = (table_err->entries[mac_id].rssi_square_lin_sum/(float)table_err->entries[mac_id].total_packets)  - (rssi_avg*rssi_avg);
 #ifndef ANONYMIZATION
     u_int8_t *a=table_err->entries[mac_id].mac_address;
 #endif 
@@ -904,18 +945,19 @@ if(!gzprintf(handle,"-|-|-\n")){
 	   table_err->entries[mac_id].pwr_mgmt_count
 	   );
     printf("cts|rts|ack|rate|rssi\n");
-    printf("%u|%u|%u|%2.1f|%2.1f\n",
+    printf("%u|%u|%u|%u|%2.1f|%2.1f\n",
 	   table_err->entries[mac_id].cts_count,
 	   table_err->entries[mac_id].rts_count,
 	   table_err->entries[mac_id].ack_count,
 	   table_err->entries[mac_id].rate,
-	   table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets)
+	   rssi_avg,
+		 rssi_std_dev
 	   );
 #endif
 
 #ifdef ANONYMIZATION    
     uint8_t digest_mac[ETH_ALEN];
-    if(anonymize_mac(table->entries[mac_id].mac_address, digest_mac)) {
+    if(anonymize_mac(table_err->entries[mac_id].mac_address, digest_mac)) {
       fprintf(stderr, "Error anonymizing MAC mapping\n");
       return -1;
     }
@@ -931,7 +973,7 @@ if(!gzprintf(handle,"-|-|-\n")){
     }
 #endif
 
-    if(!gzprintf(handle,"%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f\n",
+    if(!gzprintf(handle,"%u|%u|%u|%u|%u|%u|%u|%u|%2.1f\n",
 		 table_err->entries[mac_id].total_packets,
 		 table_err->entries[mac_id].antenna,
 		 table_err->entries[mac_id].freq,
@@ -940,7 +982,8 @@ if(!gzprintf(handle,"-|-|-\n")){
 		 table_err->entries[mac_id].channel_rcv,
 		 table_err->entries[mac_id].short_preamble_count,
 		 table_err->entries[mac_id].rate,
-		 table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets)
+		 rssi_avg,
+		 rssi_std_dev
 		 )){
       perror("error writing the zip file ");
       exit(1);
@@ -958,6 +1001,8 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
   for (idx = table->added_since_last_update; idx > 0; --idx) {
 
     int mac_id = NORM(table->last - idx + 1);
+	   float rssi_avg = table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets);
+		 float rssi_std_dev = (table->entries[mac_id].rssi_square_lin_sum/(float)table->entries[mac_id].total_packets)  - (rssi_avg*rssi_avg);
 #ifndef ANONYMIZATION
     u_int8_t *a=table->entries[mac_id].mac_address;
 #endif    
@@ -979,16 +1024,17 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
 	   table->entries[mac_id].strictly_ordered_count,
 	   table->entries[mac_id].pwr_mgmt_count
 	   );  
-    printf("essid|beacon_|probe|privacy|ibss|rate_max|rate|rssi\n");
-    printf("%s|%u|%u|%u|%u|%2.1f|%2.1f|%2.1f\n",
+    printf("essid|beacon_|probe|privacy|ibss|rate|rate_max|rssi_avg|std_dev\n");
+    printf("%s|%u|%u|%u|%u|%u|%2.1f|%2.1f|%2.1f\n",
 	   table->entries[mac_id].essid,
 	   table->entries[mac_id].beacon_count,
 	   table->entries[mac_id].probe_count,
 	   table->entries[mac_id].cap_privacy,
 	   table->entries[mac_id].cap_ess_ibss,
-	   table->entries[mac_id].rate_max,
 	   table->entries[mac_id].rate,
-	   table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets)
+	   table->entries[mac_id].rate_max,
+	   rssi_avg,
+		 rssi_std_dev
 	   );
 #endif
 
@@ -1029,14 +1075,15 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
       perror("error writing the zip file ");
       exit(1);
     }
-    if(!gzprintf(handle,"|%u|%u|%u|%u|%2.1f|%2.1f|%2.1f\n",
+    if(!gzprintf(handle,"|%u|%u|%u|%u|%u|%2.1f|%2.1f|%2.1f\n",
 		 table->entries[mac_id].beacon_count,
 		 table->entries[mac_id].probe_count,
 		 table->entries[mac_id].cap_privacy,
 		 table->entries[mac_id].cap_ess_ibss,
-		 table->entries[mac_id].rate_max,
 		 table->entries[mac_id].rate,
-		 table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets)
+		 table->entries[mac_id].rate_max,
+		 rssi_avg,
+		 rssi_std_dev
 		 )){
       perror("error writing the zip file");
       exit(1);
@@ -1052,6 +1099,8 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
 
   for (idx = table_err->added_since_last_update; idx > 0; --idx) {
     int mac_id = NORM(table_err->last - idx + 1);
+	   float rssi_avg = table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets);
+		 float rssi_std_dev = (table_err->entries[mac_id].rssi_square_lin_sum/(float)table_err->entries[mac_id].total_packets)  - (rssi_avg*rssi_avg);
 #ifndef ANONYMIZATION
     u_int8_t *a=table_err->entries[mac_id].mac_address;
 #endif    
@@ -1073,22 +1122,23 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
 	   table_err->entries[mac_id].strictly_ordered_count,
 	   table_err->entries[mac_id].pwr_mgmt_count
 	   );  
-    printf("essid|beacon_|probe|privacy|ibss|rate_max|rate|rssi\n");
-    printf("%s|%u|%u|%u|%u|%2.1f|%2.1f|%2.1f\n",
+    printf("essid|beacon_|probe|privacy|ibss|rate|rate_max|rssi_avg|std_dev\n");
+    printf("%s|%u|%u|%u|%u|%u|%2.1f|%2.1f|%2.1f\n",
 	   table_err->entries[mac_id].essid,
 	   table_err->entries[mac_id].beacon_count,
 	   table_err->entries[mac_id].probe_count,
 	   table_err->entries[mac_id].cap_privacy,
 	   table_err->entries[mac_id].cap_ess_ibss,
-	   table_err->entries[mac_id].rate_max,
 	   table_err->entries[mac_id].rate,
-	   table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets)
+	   table_err->entries[mac_id].rate_max,
+	   rssi_avg,
+		 rssi_std_dev
 	   );
 #endif
 
 #ifdef ANONYMIZATION    
     uint8_t digest_mac[ETH_ALEN];
-    if(anonymize_mac(table->entries[mac_id].mac_address, digest_mac)) {
+    if(anonymize_mac(table_err->entries[mac_id].mac_address, digest_mac)) {
       fprintf(stderr, "Error anonymizing MAC mapping\n");
       return -1;
     }
@@ -1103,7 +1153,7 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
       exit(1);
     }
 #endif
-    if(!gzprintf(handle,"%s|%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f\n",
+    if(!gzprintf(handle,"%s|%u|%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f|%2.1f\n",
 		 table_err->entries[mac_id].essid,
 		 table_err->entries[mac_id].total_packets,
 		 table_err->entries[mac_id].antenna,
@@ -1113,7 +1163,8 @@ int address_mgmt_table_write_update(mgmt_address_table_t* table,mgmt_address_tab
 		 table_err->entries[mac_id].channel_rcv,
 		 table_err->entries[mac_id].short_preamble_count,
 		 table_err->entries[mac_id].rate,
-		 table_err->entries[mac_id].rssi_lin_sum/((float)table_err->entries[mac_id].total_packets)
+		 rssi_avg,
+		 rssi_std_dev
 		 )){
       perror("error writing the zip file ");
       exit(1);
@@ -1161,7 +1212,6 @@ int address_none_table_lookup(none_address_table_t*  table,struct rcv_pkt * pake
   if (table->length > 1) {
     table->last = NORM(table->last + 1);
   }
-  //TODO : add info on the data packets src and destination 
   
   memcpy(table->entries[table->last].mac_address, paket->mac_address, sizeof(paket->mac_address));
   table->entries[table->last].total_packets=  1;
@@ -1213,12 +1263,14 @@ int address_none_table_write_update(none_address_table_t* table,gzFile handle) {
 #endif
   for (idx = table->added_since_last_update; idx > 0; --idx) {
     int mac_id = NORM(table->last - idx + 1);
+	   float rssi_avg = table->entries[mac_id].rssi_lin_sum/((float)table->entries[mac_id].total_packets);
+		 float rssi_std_dev = (table->entries[mac_id].rssi_square_lin_sum/(float)table->entries[mac_id].total_packets)  - (rssi_avg*rssi_avg);
     u_int8_t *a=table->entries[mac_id].mac_address;   
     if(!gzprintf(handle,"%02x:%02x|",a[0],a[1])) {
       perror("cannot write mac on  none packets");
       exit(1);
     }
-    if(!gzprintf(handle,"%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f\n",
+    if(!gzprintf(handle,"%u|%u|%u|%u|%u|%u|%u|%u|%2.1f|%2.1f\n",
 		 table->entries[mac_id].total_packets,
 		 table->entries[mac_id].antenna,
 		 table->entries[mac_id].freq,
@@ -1227,7 +1279,8 @@ int address_none_table_write_update(none_address_table_t* table,gzFile handle) {
 		 table->entries[mac_id].channel_rcv,
 		 table->entries[mac_id].short_preamble_count,
 		 table->entries[mac_id].rate,
-		 table->entries[mac_id].rssi_lin_sum/((float) table->entries[mac_id].total_packets)
+		 rssi_avg,
+		 rssi_std_dev
 		 )){
       perror("can't write info about none packets \n");
       exit(1);
@@ -1306,11 +1359,11 @@ int address_client_table_write_update(gzFile handle, client_address_table_t* tab
   for (idx = table->added_since_last_update; idx > 0; --idx) {
 		
     int mac_id = NORM(table->last - idx + 1);
-#ifdef DEBUG_CORRECT
 #ifndef ANONYMIZATION
     u_int8_t *a=table->entries[mac_id].mac_address;
     printf("%02x:%02x:%02x:%02x:%02x:%02x|",a[0],a[1],a[2],a[3],a[4],a[5]);
 #endif
+#ifdef DEBUG_CORRECT
     printf("%u|%u|%u|%u|%u|%d.%d|%d.%d\n",
 	   table->entries[mac_id].tx_pkts,
 	   table->entries[mac_id].tx_retries,

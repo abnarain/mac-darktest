@@ -48,9 +48,8 @@ int j_hdr(struct jigdump_hdr *jh , int in_idx, struct rcv_pkt * paket){
 	//save or discard ?  RX_FLAG_SHORT_GI, RX_FLAG_HT RX_FLAG_40MHZ 
   if(!jh->rate_ || (jh->flags_ & RX_FLAG_HT )){
       paket->rate=  jh->rate_idx_; //  (.5 * ieee80211_htrates[(jh->rate_idx_) & 0xf]);    	
-  }else { 
-				
-    paket->rate = jh->rate_; //  (float)((.5 * ((jh->rate_) & 0x7f)));
+  }else { 			
+    paket->rate = jh->rate_ +76 ; //  (float)((.5 * ((jh->rate_) & 0x7f)));
   }
   if(jh->flags_ & RX_FLAG_SHORTPRE ){	
     paket->short_preamble_err=1;

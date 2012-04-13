@@ -26,13 +26,11 @@ extern char bismark_id[256];
 typedef struct {
 
   u_int8_t mac_address[6];
-  int64_t time;
   u_int32_t total_packets ;
   // jigdump header 
-  float rssi_sum;
   float rssi_lin_sum;
-  float rate;
-	int rt_index[256];
+	float rssi_square_lin_sum;
+  u_int16_t rate;
   u_int16_t freq ;
   u_int8_t antenna;
   u_int32_t ath_crc_err_count;
@@ -65,12 +63,11 @@ typedef struct {
 typedef struct {
 
  u_int8_t mac_address[6];
-  int64_t time;
   u_int32_t total_packets ;
   // jigdump header 
-  float rssi_sum;
   float rssi_lin_sum;
-  float rate;
+	float rssi_square_lin_sum;
+  u_int16_t rate;
   u_int16_t freq ;
   u_int8_t antenna;
   u_int32_t ath_crc_err_count;
@@ -94,13 +91,12 @@ typedef struct {
 
  u_int8_t mac_address[6];
  u_int8_t dest_mac_address[6];
-  int64_t time;
   u_int32_t total_packets ;
   // jigdump header 
-  float rssi_sum;
   float rssi_lin_sum;
-  float rate;
-  float rate_mcs_idx ;
+	float rssi_square_lin_sum;
+  u_int16_t rate;
+	int rt_index[256];
   u_int16_t freq ;
   u_int8_t antenna;
   u_int32_t ath_crc_err_count;
@@ -129,13 +125,11 @@ typedef struct {
 typedef struct {
 
   u_int8_t mac_address[6];
-  int64_t time;
   u_int32_t total_packets ;
   // jigdump header 
-  float rssi_sum;
   float rssi_lin_sum;
-  float rate;
-  float rate_mcs_idx ;
+	float rssi_square_lin_sum;
+  u_int16_t rate;
   u_int16_t freq ;
   u_int8_t antenna;
   u_int32_t ath_crc_err_count;
@@ -233,9 +227,5 @@ int address_none_table_write_update(none_address_table_t* table, gzFile handle) 
 
 int initialize_bismark_id() ;
 int write_update();
-
-
-
-
 
 #endif
